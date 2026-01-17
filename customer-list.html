@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -157,4 +158,165 @@
         }
     </script>
 </body>
+=======
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Management - Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body id="page-customers">
+
+    <aside class="sidebar">
+        <h2>Customer List</h2>
+        <a href="admin_dashboard_main_hub.html" class="nav-link nav-dashboard">Dashboard</a>
+        <a href="customer-list.html" class="nav-link nav-customers">Customer List</a>
+        <a href="auto_reply_template_manager.html" class="nav-link nav-templates">Template Manager</a>
+        <a href="chat-history.html" class="nav-link nav-history">Chat History</a>
+        <a href="inquiry-repository.html" class="nav-link nav-repository">Inquiry Repository</a>
+        <a href="lead-scoring.html" class="nav-link nav-scoring nav-child">Lead Scoring</a>
+    </aside>
+
+    <main class="main">
+        <div class="header">
+            <h1>Customer Management</h1>
+            <button class="btn btn-blue" onclick="openAddCustomerModal()">+ Add Customer</button>
+        </div>
+
+        <div class="dashboard-grid">
+            
+            <section>
+                <div class="card">
+                    <h3 style="margin-top: 0;">Customer List</h3>
+                    <input type="text" class="search-bar" placeholder="Search by ID, name or phone...">
+                    
+                    <div class="customer-list">
+                        <div class="customer-item">
+                            <div class="customer-info">
+                                <strong>Eugene Tan</strong>
+                                <p>ID: 12345678 • 2 days ago</p>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-blue">View</button>
+                                <button class="btn btn-gray">Edit</button>
+                            </div>
+                        </div>
+
+                        <div class="customer-item" style="border-left-color: var(--gray);">
+                            <div class="customer-info">
+                                <strong>Ananya Ravikumar</strong>
+                                <p>ID: 24680135 • 1 week ago</p>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-blue">View</button>
+                                <button class="btn btn-gray">Edit</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-top: 0;">Quick Edit Profile</h3>
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" value="Ananya Ravikumar">
+                    </div>
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" value="ananya@example.com">
+                    </div>
+                    <button class="btn btn-blue" style="width: 100%; margin-top: 10px;">Update Profile</button>
+                </div>
+            </section>
+
+            <section>
+                <div class="card">
+                    <div class="profile-header">
+                        <div class="avatar">AR</div>
+                        <div>
+                            <h3 style="margin:0">Ananya Ravikumar</h3>
+                            <p style="font-size: 0.8rem; color: var(--gray); margin: 4px 0;">
+                                Assigned: Jayden Ng • <span style="color:var(--green); font-weight: bold;">Active lead</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="info-grid">
+                        <div class="info-box"><span class="info-label">Contact</span>+65 9123 4567</div>
+                        <div class="info-box"><span class="info-label">Location</span>Singapore</div>
+                        <div class="info-box" style="grid-column: span 2;"><span class="info-label">Customer ID</span>CUS-000123456A</div>
+                    </div>
+
+                    <div style="margin-bottom: 25px;">
+                        <span class="info-label" style="margin-bottom: 8px;">Tags</span>
+                        <span class="tag">New</span>
+                        <span class="tag">High Budget</span>
+                        <span class="tag">WhatsApp</span>
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-green">WhatsApp Reply</button>
+                        <button class="btn btn-red">Delete Lead</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-top: 0;">Recent Conversation</h3>
+                    <div class="chat-container">
+                        <div class="chat-bubble bubble-left">Hi, I'm interested in the premium plan.</div>
+                        <div class="chat-bubble bubble-right">Sure! Let me send you the details.</div>
+                    </div>
+                    <a href="chat-history.html" style="font-size: 0.75rem; color: var(--blue); text-decoration: none; font-weight: 600;">View Full History →</a>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-top: 0;">Internal Sales Notes</h3>
+                    <textarea rows="3" placeholder="Type internal notes here..."></textarea>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+                        <button class="btn btn-blue">Save Note</button>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <div class="modal" id="addCustomerModal">
+        <div class="modal-content">
+            <h3 style="margin-top: 0;">Add New Customer</h3>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" placeholder="Enter name">
+            </div>
+            <div class="form-group">
+                <label>Phone</label>
+                <input type="text" placeholder="+65...">
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn btn-blue" style="flex: 1;">Save</button>
+                <button class="btn btn-gray" style="flex: 1;" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openAddCustomerModal() {
+            document.getElementById('addCustomerModal').style.display = 'flex';
+        }
+        function closeModal() {
+            document.getElementById('addCustomerModal').style.display = 'none';
+        }
+        // Close modal when clicking outside of the content
+        window.onclick = function(event) {
+            let modal = document.getElementById('addCustomerModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+>>>>>>> 20c28bbbb82d5e67a44ecc17ee355ca958cba7ee
 </html>
