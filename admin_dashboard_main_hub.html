@@ -11,6 +11,7 @@
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 2000; }
         .modal-content { background: white; padding: 30px; border-radius: 12px; width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body id="page-dashboard">
 
@@ -28,22 +29,40 @@
     <div class="header">
         <div class="header-left">
             <h1>Admin Dashboard</h1>
-            <button class="btn btn-gray" onclick="openCustomizeModal()" style="font-size: 12px; cursor:pointer;">⚙️ Customize Metrics</button>
+            <button class="btn btn-gray" onclick="openCustomizeModal()" style="font-size: 12px; cursor:pointer;">⚙️ Customize Stats</button>
         </div>
-
         <div class="search-container">
-            <input type="text" placeholder="Search rules..." class="taskbar-search" style="width: 250px;">
+            <input type="text" placeholder="Search leads, rules, or customers..." class="taskbar-search">
         </div>
+        <div class="header-right"></div>
     </div>
 
-    <div class="dashboard-grid" id="metricsContainer" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 30px;">
+    <div class="dashboard-grid" id="metricsContainer" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
         <div class="card" id="slot-0"></div>
         <div class="card" id="slot-1"></div>
         <div class="card" id="slot-2"></div>
         <div class="card" id="slot-3"></div>
     </div>
 
-    </main>
+    <div class="card" style="margin-bottom: 25px; padding: 25px;">
+        <h3 style="margin-top:0; color: var(--slate-900);">Highest Leads (Past 7 Days)</h3>
+        <div style="height: 250px;">
+            <canvas id="leadsChart"></canvas>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 25px;">
+        <div class="card">
+            <h3 style="margin-bottom: 20px;">🔥 High-Value Leads (Top 3)</h3>
+            <div id="highValueLeadsContainer"></div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-bottom: 20px;">💬 Latest Customer Chats</h3>
+            <div id="latestChatsContainer"></div>
+        </div>
+    </div>
+</main>
 
 <div class="modal" id="customizeModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:10000;">
     <div class="modal-content" style="background:white; padding:20px; border-radius:12px; width:350px;">

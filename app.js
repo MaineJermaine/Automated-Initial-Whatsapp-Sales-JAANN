@@ -111,3 +111,90 @@ window.addEventListener('DOMContentLoaded', () => {
         if (bar) { bar.value = findTerm; bar.dispatchEvent(new Event('input')); }
     }
 });
+
+/* --- DASHBOARD ENHANCEMENTS --- */
+
+function initLeadsChart() {
+    const ctx = document.getElementById('leadsChart');
+    if (!ctx) return;
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+            datasets: [{
+                label: 'New Leads',
+                data: [42, 58, 45, 82, 71, 95, 88], // Replace with real data if available
+                borderColor: '#3F88C5',
+                backgroundColor: 'rgba(63, 136, 197, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, grid: { display: false } }, x: { grid: { display: false } } }
+        }
+    });
+}
+
+function renderHighValueLeads() {
+    const container = document.getElementById('highValueLeadsContainer');
+    if (!container) return;
+
+    const topLeads = [
+        { name: "Sarah Jenkins", phone: "+65 9123 4567", score: 98, note: "Interested in Enterprise plan." },
+        { name: "Marcus Tan", phone: "+65 8822 1133", score: 92, note: "Requested a demo for API integration." },
+        { name: "Elena Rodriguez", phone: "+1 415 555 0199", score: 89, note: "Cart value > $5,000." }
+    ];
+
+    container.innerHTML = topLeads.map(lead => `
+        <div class="customer-item" style="border: 1px solid #f1f5f9; padding: 15px; border-radius: 10px; margin-bottom: 10px; background: #fafafa;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <strong style="color: var(--slate-900); font-size: 15px;">${lead.name}</strong><br>
+                    <small style="color: var(--gray);">${lead.phone}</small>
+                </div>
+                <span style="background: var(--green); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">Score: ${lead.score}</span>
+            </div>
+            <p style="margin: 10px 0 0; font-size: 12px; color: var(--slate-900); font-style: italic;">"${lead.note}"</p>
+        </div>
+    `).join('');
+}
+
+function renderLatestChats() {
+    const container = document.getElementById('latestChatsContainer');
+    if (!container) return;
+
+    const recentChats = [
+        { name: "Lightningboi676", lastMsg: "How do I upgrade my storage?", time: "2m ago" },
+        { name: "Sarah Jenkins", lastMsg: "Thanks for the help!", time: "15m ago" }
+    ];
+
+    container.innerHTML = recentChats.map(chat => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f1f5f9;">
+            <div style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 70%;">
+                <strong style="font-size: 14px;">${chat.name}</strong>
+                <p style="margin: 2px 0 0; font-size: 12px; color: var(--gray);">${chat.lastMsg}</p>
+            </div>
+            <button class="btn btn-blue" style="padding: 5px 12px; font-size: 11px;" onclick="goToChat('${chat.name}')">View Chat</button>
+        </div>
+    `).join('');
+}
+
+window.goToChat = function(userName) {
+    // This sends the user to the chat history and tells it which chat to open
+    window.location.href = `chat-history.html?user=${encodeURIComponent(userName)}`;
+};
+
+// Update your existing DOMContentLoaded listener to include these new functions
+window.addEventListener('DOMContentLoaded', () => {
+    if (document.body.id === 'page-dashboard') {
+        renderDashboard();
+        initLeadsChart();
+        renderHighValueLeads();
+        renderLatestChats();
+    }
+});
