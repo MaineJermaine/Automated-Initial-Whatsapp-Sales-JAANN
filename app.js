@@ -1,79 +1,113 @@
-/* --- 1. GLOBAL SEARCH FEATURE --- */
-// This runs on every page. It looks for any input with "Search" in the placeholder.
-document.addEventListener('input', function (e) {
-    if (e.target && e.target.placeholder && e.target.placeholder.includes('Search')) {
-        const searchTerm = e.target.value.toLowerCase();
-        
-        // Target Tables (Repository, Lead Scoring)
-        const tableRows = document.querySelectorAll('tbody tr');
-        tableRows.forEach(row => {
-            row.style.display = row.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
-        });
-
-        // Target Lists (Customer List cards or Chat threads)
-        const cards = document.querySelectorAll('.card, .customer-item, .chat-thread');
-        cards.forEach(card => {
-            // We skip the dashboard metrics cards so they don't disappear while searching
-            if (card.closest('.dashboard-grid') && document.body.id === 'page-dashboard') return;
-            
-            card.style.display = card.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
-        });
+/* --- 1. SHARED STORAGE HELPERS --- */
+window.registerGlobalItem = function(category, name, page) {
+    let registry = JSON.parse(localStorage.getItem('crm_search_index') || '[]');
+    if (!registry.find(item => item.display === name)) {
+        registry.push({ keyword: name.toLowerCase(), display: name, category: category, page: page });
+        localStorage.setItem('crm_search_index', JSON.stringify(registry));
     }
-});
-
-/* --- 2. CUSTOMIZABLE DASHBOARD LOGIC --- */
-const availableMetrics = {
-    leads_7d: { label: "Highest Leads (7 Days)", value: "142", color: "var(--green)" },
-    bot_ratio: { label: "Bot Usage vs Engagement", value: "4.2:1", color: "var(--blue)" },
-    open_inq: { label: "Open Inquiries", value: "37", color: "var(--red)" },
-    high_leads: { label: "High-Value Leads", value: "92", color: "var(--slate-900)" },
-    total_cust: { label: "Total Customers", value: "1,284", color: "var(--slate-900)" },
-    chat_summary: { label: "Latest Chat Summary", value: "3 New / 2 Pending", color: "var(--orange)" }
 };
 
-// Default slots
-let currentLayout = ['leads_7d', 'bot_ratio', 'open_inq', 'high_leads'];
+/* --- NEW: AUTO-INDEXER (Scans page for content) --- */
+function autoIndexPage() {
+    const pageId = document.body.id;
+    if (pageId === 'page-scoring') {
+        document.querySelectorAll('#ruleTable tr td:first-child').forEach(td => {
+            window.registerGlobalItem("Rule", td.innerText, "lead-scoring.html");
+        });
+    }
+    if (pageId === 'page-customers') {
+        document.querySelectorAll('.customer-item strong').forEach(el => {
+            window.registerGlobalItem("Customer", el.innerText, "customer-list.html");
+        });
+    }
+}
+
+/* --- 2. DASHBOARD & METRICS LOGIC --- */
+const availableMetrics = {
+    leads_7d: { label: "Highest Leads (Past 7 Days)", value: "156", color: "var(--blue)" },
+    usage_ratio: { label: "Bot Usage : Engagement Ratio", value: "4.2 : 1", color: "var(--green)" },
+    chat_summary: { label: "Latest Customer Chats", value: "3 New / 2 Pending", color: "var(--slate-900)" },
+    total_cust: { label: "Total Customers", value: "1,284", color: "var(--slate-900)" },
+    total_chats: { label: "Total Conversations", value: "5,421", color: "var(--slate-900)" },
+    open_inq: { label: "Open Inquiries", value: "37", color: "var(--red)" },
+    high_leads: { label: "High-Value Leads", value: "92", color: "var(--green)" }
+};
+
+let currentLayout = JSON.parse(localStorage.getItem('dash_layout')) || ['leads_7d', 'usage_ratio', 'chat_summary', 'high_leads'];
 
 function renderDashboard() {
     const container = document.getElementById('metricsContainer');
-    if (!container) return; // Exit if we aren't on the dashboard page
-
+    if (!container) return; 
     currentLayout.forEach((metricKey, index) => {
         const metric = availableMetrics[metricKey];
         const slot = document.getElementById(`slot-${index}`);
         if (slot) {
-            slot.innerHTML = `
-                <h3 style="margin-top: 0; font-size: 14px; color: var(--gray);">${metric.label}</h3>
-                <p style="font-size: 24px; margin: 10px 0 0; font-weight: 700; color: ${metric.color}">${metric.value}</p>
-            `;
+            slot.innerHTML = `<h3 style="margin-top:0;font-size:14px;color:var(--gray);">${metric.label}</h3><p style="font-size:28px;margin:10px 0 0;font-weight:700;color:${metric.color}">${metric.value}</p>`;
         }
     });
 }
 
-/* --- 3. MODAL CONTROLS --- */
 window.openCustomizeModal = function() {
-    const form = document.getElementById('configForm');
-    form.innerHTML = '';
-    currentLayout.forEach((currentKey, index) => {
-        let options = Object.keys(availableMetrics).map(key => 
-            `<option value="${key}" ${key === currentKey ? 'selected' : ''}>${availableMetrics[key].label}</option>`
-        ).join('');
-        form.innerHTML += `<div style="margin-bottom:15px;"><label>Slot ${index + 1}</label><select id="select-slot-${index}" style="width:100%; padding:8px; border-radius:5px;">${options}</select></div>`;
-    });
+    document.getElementById('configForm').innerHTML = currentLayout.map((key, i) => `
+        <div style="margin-bottom:15px;">
+            <label style="display:block;font-weight:600;">Slot ${i+1}</label>
+            <select id="select-slot-${i}" style="width:100%;padding:8px;">
+                ${Object.keys(availableMetrics).map(m => `<option value="${m}" ${m===key?'selected':''}>${availableMetrics[m].label}</option>`).join('')}
+            </select>
+        </div>`).join('');
     document.getElementById('customizeModal').style.display = 'flex';
 };
 
-window.closeModal = function() {
-    document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
-};
-
 window.saveDashboardConfig = function() {
-    for (let i = 0; i < 4; i++) {
-        currentLayout[i] = document.getElementById(`select-slot-${i}`).value;
-    }
+    for (let i=0; i<4; i++) { currentLayout[i] = document.getElementById(`select-slot-${i}`).value; }
+    localStorage.setItem('dash_layout', JSON.stringify(currentLayout));
     renderDashboard();
-    closeModal();
+    document.getElementById('customizeModal').style.display = 'none';
 };
 
-// Auto-run dashboard renderer when the page loads
-window.addEventListener('DOMContentLoaded', renderDashboard);
+/* --- 3. SEARCH LOGIC --- */
+document.addEventListener('input', function (e) {
+    if (e.target && e.target.classList.contains('taskbar-search')) {
+        const query = e.target.value.toLowerCase();
+        
+        // Filter Local Content
+        document.querySelectorAll('tbody tr, .customer-item, .chat-thread').forEach(item => {
+            item.style.display = item.textContent.toLowerCase().includes(query) ? '' : 'none';
+        });
+
+        // Show Global Dropdown
+        let old = document.getElementById('search-dropdown');
+        if (old) old.remove();
+        if (query.length < 2) return;
+
+        const registry = JSON.parse(localStorage.getItem('crm_search_index') || '[]');
+        const matches = registry.filter(item => item.keyword.includes(query));
+
+        if (matches.length > 0) {
+            const dd = document.createElement('div');
+            dd.id = 'search-dropdown';
+            dd.style = "position:absolute; top:45px; left:0; width:100%; background:white; border:1px solid #ddd; z-index:9999; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);";
+            matches.forEach(m => {
+                const div = document.createElement('div');
+                div.style = "padding:10px; cursor:pointer; border-bottom:1px solid #eee; font-size:13px;";
+                div.innerHTML = `<b style="color:var(--blue)">[${m.category}]</b> ${m.display}`;
+                div.onclick = () => window.location.href = `${m.page}?find=${encodeURIComponent(m.keyword)}`;
+                dd.appendChild(div);
+            });
+            e.target.parentElement.style.position = 'relative';
+            e.target.parentElement.appendChild(dd);
+        }
+    }
+});
+
+/* --- 4. INIT --- */
+window.addEventListener('DOMContentLoaded', () => {
+    autoIndexPage(); // Scan page for searchable items
+    if (document.body.id === 'page-dashboard') renderDashboard();
+
+    const findTerm = new URLSearchParams(window.location.search).get('find');
+    if (findTerm) {
+        const bar = document.querySelector('.taskbar-search');
+        if (bar) { bar.value = findTerm; bar.dispatchEvent(new Event('input')); }
+    }
+});

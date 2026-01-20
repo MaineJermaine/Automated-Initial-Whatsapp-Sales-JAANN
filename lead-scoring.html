@@ -21,8 +21,15 @@
 
     <main class="main">
         <div class="header">
-            <h1>Lead Scoring Rules</h1>
-            <button class="btn-primary" onclick="openModal()">+ New Rule</button>
+            <div class="header-left">
+                <h1>Lead Scoring Rules</h1> </div>
+
+            <div class="search-container">
+                <input type="text" placeholder="Search leads, rules, or customers..." class="taskbar-search">
+            </div>
+
+            <div class="header-right">
+                </div>
         </div>
 
         <div class="card" style="padding: 0;"> <div class="card-header">
@@ -89,6 +96,11 @@
             const score = document.getElementById("scoreValue").value;
             if (!name || !score) return alert("Please fill in all fields");
             
+            // --- ADD THIS LINE BELOW ---
+            // This registers the new rule into the global search index
+            window.registerGlobalItem("Rule", name, "lead-scoring.html");
+            // ----------------------------
+
             if (editingRow) {
                 editingRow.children[0].innerText = name;
                 editingRow.children[1].innerText = (score > 0 ? "+" : "") + score;
