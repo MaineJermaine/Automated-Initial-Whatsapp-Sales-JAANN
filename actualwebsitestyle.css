@@ -1,0 +1,639 @@
+/* General Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Arial', sans-serif;
+}
+
+body {
+    color: #333;
+    line-height: 1.6;
+}
+
+/* Navigation Styles */
+header {
+    background: transparent; /* Transparent background */
+    padding: 30px 10%; /* Creates the "centered but left" look by adding side padding */
+    position: absolute; /* Sits on top of the hero content */
+    width: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+}
+
+nav {
+    display: flex;
+    justify-content: flex-start; /* Aligns everything to the left side */
+    align-items: center;
+}
+
+.logo {
+    font-weight: bold;
+    font-size: 20px;
+    letter-spacing: 1px;
+    color: #333; /* Or white, depending on your hero image brightness */
+    margin-right: 60px; /* Space between logo and first button */
+}
+
+nav ul {
+    display: flex;
+    list-style: none;
+    gap: 35px; /* Consistent spacing between buttons */
+}
+
+nav ul li a {
+    text-decoration: none;
+    color: #444;
+    font-weight: bold;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    padding-bottom: 6px;
+    position: relative;
+    transition: color 0.3s ease;
+}
+
+/* Yellow Underline Effect */
+nav ul li a::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    bottom: 0;
+    left: 0;
+    background-color: #f1c40f;
+    transition: width 0.3s ease;
+}
+
+nav ul li a:hover::after,
+nav ul li a.active::after {
+    width: 100%;
+}
+
+nav ul li a.active {
+    color: #f1c40f;
+}
+
+/* Hero Section */
+.hero {
+    height: 100vh;
+    background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url('hero-bg.jpg') center/cover;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    color: white;
+}
+
+.hero h1 {
+    font-size: 4rem;
+    letter-spacing: 2px;
+}
+
+/* Typing Animation */
+.typing-container {
+    margin: 20px 0;
+    font-size: 2rem;
+    font-weight: bold;
+    color: #1a2a6c; 
+}
+
+.typing-text {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    border-right: 3px solid #1a2a6c;
+    width: 0;
+    animation: typing 3s steps(20, end) forwards, blink 0.75s step-end infinite;
+}
+
+@keyframes typing {
+    from { width: 0 }
+    to { width: 100% }
+}
+
+@keyframes blink {
+    from, to { border-color: transparent }
+    50% { border-color: #1a2a6c }
+}
+
+/* Buttons */
+.btn-primary {
+    display: inline-block;
+    background: #f1c40f;
+    color: #333;
+    padding: 12px 30px;
+    text-decoration: none;
+    border-radius: 5px;
+    font-weight: bold;
+    margin-top: 20px;
+}
+
+/* Promo Cards */
+.promo {
+    padding: 80px 50px;
+    text-align: center;
+}
+
+.product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+    margin-top: 40px;
+}
+
+.product-card {
+    background: #f9f9f9;
+    padding: 20px;
+}
+
+.img-placeholder {
+    height: 300px;
+    background: #eee;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-buy {
+    background: black;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+/* --- OUR SERVICES SECTION (MATCHING SCREENSHOT) --- */
+
+.our-services {
+    padding: 80px 50px;
+    background: #fff;
+    text-align: center;
+}
+
+.our-services h2 {
+    font-size: 2rem;
+    margin-bottom: 20px;
+}
+
+.intro-text {
+    max-width: 800px;
+    margin: 0 auto 40px auto;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.services-container {
+    display: flex;
+    justify-content: center;
+    gap: 15px; /* Tight gap */
+    max-width: 1050px; /* Constrains the section to look smaller */
+    margin: 0 auto;
+}
+
+.service-card {
+    position: relative;
+    flex: 1; /* Equal width for all cards */
+    max-width: 330px; /* Limits the size of each card */
+    height: 330px;    /* Keeps cards square-ish */
+    border-radius: 12px; /* Smooth corners */
+    overflow: hidden;
+    transition: transform 0.3s ease;
+}
+
+.service-card:hover {
+    transform: translateY(-5px);
+}
+
+.service-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: brightness(0.65); /* Darkens background for text readability */
+}
+
+/* Specific tan background for the third card */
+.printing-service {
+    background-color: #c5b3a3; 
+}
+
+.overlay-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    width: 85%;
+    z-index: 2;
+}
+
+.overlay-text h3 {
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+}
+
+.overlay-text p {
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+/* --- END OF SERVICES SECTION --- */
+
+/* CTA Section */
+.cta-section {
+    background: #a39382;
+    padding: 80px 50px;
+    text-align: center;
+    color: white;
+}
+
+/* Footer */
+footer {
+    padding: 50px;
+    background: #fff;
+    border-top: 1px solid #eee;
+}
+
+.footer-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 30px;
+}
+
+.footer-col ul { list-style: none; }
+.footer-col ul li { margin-bottom: 10px; font-size: 13px; }
+
+.copyright {
+    text-align: center;
+    font-size: 12px;
+    color: #999;
+}
+
+/* WhatsApp Floating Button */
+.whatsapp-float {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #25d366;
+    color: white;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 30px;
+    box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .services-container {
+        flex-direction: column;
+        align-items: center;
+    }
+    .service-card {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+}
+
+/* About Hero */
+.about-hero {
+    height: 60vh;
+    background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), url('about-hero-bg.jpg') center/cover;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+}
+
+.about-hero h1 {
+    font-size: 5rem;
+    font-weight: 900;
+    letter-spacing: 5px;
+}
+
+/* Container Split for Intro and Inclusive sections */
+.container-split {
+    display: flex;
+    max-width: 1200px;
+    margin: 80px auto;
+    padding: 0 50px;
+    gap: 50px;
+    align-items: center;
+}
+
+.split-left, .split-right {
+    flex: 1;
+}
+
+.split-left h2 {
+    font-size: 1.8rem;
+    color: #444;
+}
+
+.split-right p {
+    margin-bottom: 20px;
+    font-size: 0.95rem;
+    color: #555;
+}
+
+/* Quote Section */
+.quote-section {
+    text-align: center;
+    padding: 60px 20px;
+    background: #fff;
+}
+
+.quote-section p {
+    font-style: italic;
+    color: #888;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+}
+
+.quote-section span {
+    display: block;
+    margin-top: 10px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #5a7b8f; /* Steel blue color from screenshot */
+}
+
+/* Mission/Vision/Values */
+.mission-vision {
+    max-width: 1200px;
+    margin: 0 auto 80px auto;
+    padding: 0 50px;
+}
+
+.mission-img-container img {
+    width: 100%;
+    border-radius: 15px;
+    margin-bottom: 40px;
+}
+
+.values-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+}
+
+.value-item h4 {
+    color: #f1c40f; /* Yellow accent */
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    border-top: 2px solid #f1c40f;
+    display: inline-block;
+    padding-top: 5px;
+}
+
+.value-item p {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #666;
+}
+
+/* Inclusive Section Details */
+.inclusive-section .split-left img {
+    width: 100%;
+    border-radius: 5px;
+}
+
+.yellow-divider {
+    width: 100px;
+    height: 3px;
+    background: #f1c40f;
+    margin: 25px 0;
+}
+
+/* Services Hero */
+.services-hero {
+    height: 60vh;
+    background: linear-gradient(rgba(0,0,0,0.2), rgba(0,0,0,0.2)), url('services-hero-bg.jpg') center/cover;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+}
+
+.services-hero h1 {
+    font-size: 5rem;
+    letter-spacing: 8px;
+    font-weight: 900;
+}
+
+/* Quick Quote */
+.quick-quote {
+    padding: 80px 50px;
+    text-align: center;
+}
+
+.quote-grid {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-top: 40px;
+}
+
+.quote-grid img {
+    max-width: 45%;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+/* Detailed Rows */
+.services-detail {
+    padding: 50px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.detail-row {
+    display: flex;
+    align-items: center;
+    gap: 60px;
+    margin-bottom: 100px;
+}
+
+.detail-row.reverse {
+    flex-direction: row-reverse;
+}
+
+.detail-img, .detail-text {
+    flex: 1;
+}
+
+.detail-img img {
+    width: 100%;
+    border-radius: 15px;
+}
+
+.detail-text h3 {
+    font-size: 1.8rem;
+    margin-bottom: 20px;
+}
+
+.detail-text .price {
+    font-weight: bold;
+    margin: 20px 0;
+    font-size: 1.2rem;
+}
+
+.btn-outline {
+    display: inline-block;
+    padding: 10px 25px;
+    border: 1px solid #f1c40f;
+    color: #333;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: 0.3s;
+}
+
+.btn-outline:hover {
+    background: #f1c40f;
+}
+
+/* FAQ Section */
+.faq-section {
+    background-color: #a39e93; /* Tan background from screenshot */
+    padding: 80px 50px;
+    text-align: center;
+    color: white;
+}
+
+.faq-category {
+    max-width: 800px;
+    margin: 40px auto;
+    text-align: left;
+}
+
+.faq-category h3 {
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 1.4rem;
+}
+
+.faq-item {
+    background: white;
+    color: #333;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.faq-question {
+    padding: 20px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    cursor: pointer;
+}
+
+.faq-answer {
+    padding: 20px;
+    background: #f1f1f1;
+    border-top: 1px solid #eee;
+    font-size: 0.9rem;
+}
+
+/* F.A.Q. Styling */
+.faq-item {
+    background: white;
+    color: #333;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    overflow: hidden;
+    text-align: left;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.faq-question {
+    padding: 18px 25px;
+    font-weight: 500;
+    font-size: 0.95rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+/* Hide the answer by default */
+.faq-answer {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, padding 0.3s ease;
+    background: #e9e9e9; /* Light grey box from screenshot */
+    padding: 0 25px;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #555;
+}
+
+/* Show the answer when active */
+.faq-item.active .faq-answer {
+    max-height: 200px; /* Adjust based on content length */
+    padding: 20px 25px;
+    border-top: 1px solid #ddd;
+}
+
+.faq-question i {
+    font-size: 0.8rem;
+    transition: transform 0.3s;
+}
+
+footer {
+    padding: 60px 10%;
+    background-color: #fff;
+    border-top: 1px solid #eaeaea;
+}
+
+.footer-container {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 40px;
+}
+
+.footer-col h4 {
+    font-size: 14px;
+    margin-bottom: 20px;
+    letter-spacing: 1px;
+}
+
+.footer-col ul {
+    list-style: none;
+    padding: 0;
+}
+
+.footer-col ul li {
+    font-size: 13px;
+    margin-bottom: 10px;
+    color: #555;
+    cursor: pointer;
+}
+
+.footer-logo {
+    font-weight: bold;
+    font-size: 18px;
+    margin-bottom: 20px;
+}
+
+.brand-info p {
+    font-size: 13px;
+    margin-bottom: 10px;
+    color: #555;
+}
+
+.copyright {
+    text-align: center;
+    margin-top: 50px;
+    font-size: 12px;
+    color: #aaa;
+    border-top: 1px solid #f5f5f5;
+    padding-top: 20px;
+}

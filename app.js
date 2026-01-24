@@ -198,3 +198,22 @@ window.addEventListener('DOMContentLoaded', () => {
         renderLatestChats();
     }
 });
+
+document.querySelectorAll('.faq-question').forEach(question => {
+    question.addEventListener('click', () => {
+        const item = question.parentElement;
+        const icon = question.querySelector('i');
+
+        // Toggle the active class on the faq-item
+        item.classList.toggle('active');
+
+        // Change icon from down to up (chevron effect)
+        if (item.classList.contains('active')) {
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+        } else {
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        }
+    });
+});
