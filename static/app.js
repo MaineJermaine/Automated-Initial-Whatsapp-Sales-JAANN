@@ -77,19 +77,23 @@ window.saveDashboardConfig = function() {
     modalInstance.hide();
 };
 
-/* --- 3. SEARCH LOGIC --- */
+/* --- 3. IMPROVED GLOBAL SEARCH LOGIC --- */
 document.addEventListener('input', function (e) {
     if (e.target && e.target.classList.contains('taskbar-search')) {
         const query = e.target.value.toLowerCase();
+        const searchContainer = e.target.parentElement;
         
-        // Local Filter
-        document.querySelectorAll('tbody tr, .customer-item, .chat-thread').forEach(item => {
+        // 1. Local Filtering (hides items currently on the screen)
+        document.querySelectorAll('tbody tr, .customer-item, .chat-thread, .card').forEach(item => {
+            // We skip the search bar itself and containers
+            if (item.classList.contains('search-container')) return;
             item.style.display = item.textContent.toLowerCase().includes(query) ? '' : 'none';
         });
 
-        // Global Dropdown
-        let old = document.getElementById('search-dropdown');
-        if (old) old.remove();
+        // 2. Global Dropdown Logic
+        let oldDropdown = document.getElementById('search-dropdown');
+        if (oldDropdown) oldDropdown.remove();
+        
         if (query.length < 2) return;
 
         const registry = JSON.parse(localStorage.getItem('crm_search_index') || '[]');
@@ -98,16 +102,32 @@ document.addEventListener('input', function (e) {
         if (matches.length > 0) {
             const dd = document.createElement('div');
             dd.id = 'search-dropdown';
-            dd.style = "position:absolute; top:45px; left:0; width:100%; background:white; border:1px solid #ddd; z-index:9999; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);";
+            // Styling to ensure it appears over the dashboard cards
+            dd.style = "position:absolute; top:100%; left:0; width:100%; background:white; border:1px solid #e2e8f0; z-index:9999; border-radius:8px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1); max-height: 300px; overflow-y: auto;";
+            
             matches.forEach(m => {
                 const div = document.createElement('div');
-                div.style = "padding:10px; cursor:pointer; border-bottom:1px solid #eee; font-size:13px;";
-                div.innerHTML = `<b style="color:var(--blue)">[${m.category}]</b> ${m.display}`;
-                div.onclick = () => window.location.href = `${m.page}?find=${encodeURIComponent(m.keyword)}`;
+                div.style = "padding:12px 15px; cursor:pointer; border-bottom:1px solid #f1f5f9; font-size:14px; display: flex; justify-content: space-between;";
+                div.innerHTML = `
+                    <span><b style="color:var(--blue)">[${m.category}]</b> ${m.display}</span>
+                    <span style="font-size: 11px; color: var(--gray);">Go to Page →</span>
+                `;
+                div.onclick = () => {
+                    // Redirects to the specific page and highlights the result
+                    window.location.href = `${m.page}?find=${encodeURIComponent(m.keyword)}`;
+                };
                 dd.appendChild(div);
             });
-            e.target.parentElement.appendChild(dd);
+            searchContainer.appendChild(dd);
         }
+    }
+});
+
+// Close dropdown if clicking outside
+document.addEventListener('click', function(e) {
+    const dd = document.getElementById('search-dropdown');
+    if (dd && !e.target.closest('.search-container')) {
+        dd.remove();
     }
 });
 

@@ -81,7 +81,26 @@
         </div>
     </div>
 
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    const rulesFromBackend = [
+            {% for rule in all_rules %}
+                { name: "{{ rule.name }}", id: "{{ rule.id }}" }, // Added a comma here
+            {% endfor %}
+        ];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // We wait a tiny bit to make sure app.js is loaded first
+            setTimeout(() => {
+                if (window.registerGlobalItem) {
+                    rulesFromBackend.forEach(rule => {
+                        window.registerGlobalItem("Rule", rule.name, "/scoring");
+                    });
+                }
+            }, 100);
+        });
+    </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

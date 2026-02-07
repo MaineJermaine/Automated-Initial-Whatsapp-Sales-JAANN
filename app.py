@@ -23,10 +23,13 @@ with app.app_context():
 # --- ROUTES ---
 
 # 1. Main Dashboard
+# Update this in your app.py
 @app.route('/')
 @app.route('/dashboard')
 def dashboard():
-    return render_template('admin_dashboard_main_hub.html')
+    # Fetch all rules so the search bar knows they exist immediately
+    all_rules = Rule.query.all() 
+    return render_template('admin_dashboard_main_hub.html', all_rules=all_rules)
 
 # 2. Customer List
 @app.route('/customers')
