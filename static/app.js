@@ -7,7 +7,7 @@ window.registerGlobalItem = function(category, name, page) {
     }
 };
 
-/* --- NEW: AUTO-INDEXER (Scans page for content) --- */
+/* --- AUTO-INDEXER --- */
 function autoIndexPage() {
     const pageId = document.body.id;
     if (pageId === 'page-scoring') {
@@ -25,7 +25,7 @@ function autoIndexPage() {
 /* --- 2. DASHBOARD & METRICS LOGIC --- */
 const availableMetrics = {
     leads_7d: { label: "Highest Leads (Past 7 Days)", value: "156", color: "var(--blue)" },
-    usage_ratio: { label: "Bot Usage : Engagement Ratio", value: "4.2 : 1", color: "var(--green)" },
+    usage_ratio: { label: "Bot Usage Ratio", value: "4.2 : 1", color: "var(--green)" },
     chat_summary: { label: "Latest Customer Chats", value: "3 New / 2 Pending", color: "var(--slate-900)" },
     total_cust: { label: "Total Customers", value: "1,284", color: "var(--slate-900)" },
     total_chats: { label: "Total Conversations", value: "5,421", color: "var(--slate-900)" },
@@ -42,27 +42,39 @@ function renderDashboard() {
         const metric = availableMetrics[metricKey];
         const slot = document.getElementById(`slot-${index}`);
         if (slot) {
-            slot.innerHTML = `<h3 style="margin-top:0;font-size:14px;color:var(--gray);">${metric.label}</h3><p style="font-size:28px;margin:10px 0 0;font-weight:700;color:${metric.color}">${metric.value}</p>`;
+            slot.innerHTML = `
+                <h3 style="margin-top:0;font-size:12px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;">${metric.label}</h3>
+                <p style="font-size:24px;margin:10px 0 0;font-weight:700;color:${metric.color}">${metric.value}</p>
+            `;
         }
     });
 }
 
-window.openCustomizeModal = function() {
-    document.getElementById('configForm').innerHTML = currentLayout.map((key, i) => `
-        <div style="margin-bottom:15px;">
-            <label style="display:block;font-weight:600;">Slot ${i+1}</label>
-            <select id="select-slot-${i}" style="width:100%;padding:8px;">
-                ${Object.keys(availableMetrics).map(m => `<option value="${m}" ${m===key?'selected':''}>${availableMetrics[m].label}</option>`).join('')}
+// Logic to build the customization form inside the modal
+document.getElementById('customizeModal').addEventListener('show.bs.modal', function () {
+    const configForm = document.getElementById('configForm');
+    configForm.innerHTML = currentLayout.map((key, i) => `
+        <div class="form-group">
+            <label>Metric Slot ${i+1}</label>
+            <select id="select-slot-${i}" class="form-select">
+                ${Object.keys(availableMetrics).map(m => `
+                    <option value="${m}" ${m===key?'selected':''}>${availableMetrics[m].label}</option>
+                `).join('')}
             </select>
         </div>`).join('');
-    document.getElementById('customizeModal').style.display = 'flex';
-};
+});
 
 window.saveDashboardConfig = function() {
-    for (let i=0; i<4; i++) { currentLayout[i] = document.getElementById(`select-slot-${i}`).value; }
+    for (let i=0; i<4; i++) { 
+        currentLayout[i] = document.getElementById(`select-slot-${i}`).value; 
+    }
     localStorage.setItem('dash_layout', JSON.stringify(currentLayout));
     renderDashboard();
-    document.getElementById('customizeModal').style.display = 'none';
+    
+    // Bootstrap 5 Modal Close Logic
+    const modalEl = document.getElementById('customizeModal');
+    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+    modalInstance.hide();
 };
 
 /* --- 3. SEARCH LOGIC --- */
@@ -70,12 +82,12 @@ document.addEventListener('input', function (e) {
     if (e.target && e.target.classList.contains('taskbar-search')) {
         const query = e.target.value.toLowerCase();
         
-        // Filter Local Content
+        // Local Filter
         document.querySelectorAll('tbody tr, .customer-item, .chat-thread').forEach(item => {
             item.style.display = item.textContent.toLowerCase().includes(query) ? '' : 'none';
         });
 
-        // Show Global Dropdown
+        // Global Dropdown
         let old = document.getElementById('search-dropdown');
         if (old) old.remove();
         if (query.length < 2) return;
@@ -94,37 +106,22 @@ document.addEventListener('input', function (e) {
                 div.onclick = () => window.location.href = `${m.page}?find=${encodeURIComponent(m.keyword)}`;
                 dd.appendChild(div);
             });
-            e.target.parentElement.style.position = 'relative';
             e.target.parentElement.appendChild(dd);
         }
     }
 });
 
-/* --- 4. INIT --- */
-window.addEventListener('DOMContentLoaded', () => {
-    autoIndexPage(); // Scan page for searchable items
-    if (document.body.id === 'page-dashboard') renderDashboard();
-
-    const findTerm = new URLSearchParams(window.location.search).get('find');
-    if (findTerm) {
-        const bar = document.querySelector('.taskbar-search');
-        if (bar) { bar.value = findTerm; bar.dispatchEvent(new Event('input')); }
-    }
-});
-
-/* --- DASHBOARD ENHANCEMENTS --- */
-
+/* --- 4. CHARTS & UI RENDERING --- */
 function initLeadsChart() {
     const ctx = document.getElementById('leadsChart');
     if (!ctx) return;
-
     new Chart(ctx, {
         type: 'line',
         data: {
             labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
             datasets: [{
                 label: 'New Leads',
-                data: [42, 58, 45, 82, 71, 95, 88], // Replace with real data if available
+                data: [42, 58, 45, 82, 71, 95, 88],
                 borderColor: '#3F88C5',
                 backgroundColor: 'rgba(63, 136, 197, 0.1)',
                 fill: true,
@@ -135,7 +132,7 @@ function initLeadsChart() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, grid: { display: false } }, x: { grid: { display: false } } }
+            scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
         }
     });
 }
@@ -143,23 +140,19 @@ function initLeadsChart() {
 function renderHighValueLeads() {
     const container = document.getElementById('highValueLeadsContainer');
     if (!container) return;
-
     const topLeads = [
         { name: "Sarah Jenkins", phone: "+65 9123 4567", score: 98, note: "Interested in Enterprise plan." },
-        { name: "Marcus Tan", phone: "+65 8822 1133", score: 92, note: "Requested a demo for API integration." },
+        { name: "Marcus Tan", phone: "+65 8822 1133", score: 92, note: "Requested a demo." },
         { name: "Elena Rodriguez", phone: "+1 415 555 0199", score: 89, note: "Cart value > $5,000." }
     ];
-
     container.innerHTML = topLeads.map(lead => `
-        <div class="customer-item" style="border: 1px solid #f1f5f9; padding: 15px; border-radius: 10px; margin-bottom: 10px; background: #fafafa;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                    <strong style="color: var(--slate-900); font-size: 15px;">${lead.name}</strong><br>
-                    <small style="color: var(--gray);">${lead.phone}</small>
-                </div>
-                <span style="background: var(--green); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">Score: ${lead.score}</span>
+        <div class="customer-item">
+            <div class="customer-info">
+                <strong>${lead.name}</strong><br>
+                <p>${lead.phone}</p>
+                <p style="font-style: italic; font-size: 11px;">"${lead.note}"</p>
             </div>
-            <p style="margin: 10px 0 0; font-size: 12px; color: var(--slate-900); font-style: italic;">"${lead.note}"</p>
+            <span class="status-badge status-new" style="background:var(--green); color:white;">Score: ${lead.score}</span>
         </div>
     `).join('');
 }
@@ -167,53 +160,85 @@ function renderHighValueLeads() {
 function renderLatestChats() {
     const container = document.getElementById('latestChatsContainer');
     if (!container) return;
-
     const recentChats = [
-        { name: "Lightningboi676", lastMsg: "How do I upgrade my storage?", time: "2m ago" },
-        { name: "Sarah Jenkins", lastMsg: "Thanks for the help!", time: "15m ago" }
+        { name: "Lightningboi676", lastMsg: "How do I upgrade?", time: "2m ago" },
+        { name: "Sarah Jenkins", lastMsg: "Thanks for help!", time: "15m ago" }
     ];
-
     container.innerHTML = recentChats.map(chat => `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #f1f5f9;">
-            <div style="overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 70%;">
+            <div>
                 <strong style="font-size: 14px;">${chat.name}</strong>
-                <p style="margin: 2px 0 0; font-size: 12px; color: var(--gray);">${chat.lastMsg}</p>
+                <p style="margin: 0; font-size: 12px; color: var(--gray);">${chat.lastMsg}</p>
             </div>
-            <button class="btn btn-blue" style="padding: 5px 12px; font-size: 11px;" onclick="goToChat('${chat.name}')">View Chat</button>
+            <button class="btn btn-blue" style="padding: 4px 10px; font-size: 11px;" onclick="goToChat('${chat.name}')">View</button>
         </div>
     `).join('');
 }
 
 window.goToChat = function(userName) {
-    // This sends the user to the chat history and tells it which chat to open
-    window.location.href = `chat-history.html?user=${encodeURIComponent(userName)}`;
+    window.location.href = `/history?user=${encodeURIComponent(userName)}`;
 };
 
-// Update your existing DOMContentLoaded listener to include these new functions
+/* --- 5. INITIALIZATION --- */
 window.addEventListener('DOMContentLoaded', () => {
+    autoIndexPage(); 
     if (document.body.id === 'page-dashboard') {
         renderDashboard();
         initLeadsChart();
         renderHighValueLeads();
         renderLatestChats();
     }
+
+    const findTerm = new URLSearchParams(window.location.search).get('find');
+    if (findTerm) {
+        const bar = document.querySelector('.taskbar-search');
+        if (bar) { bar.value = findTerm; bar.dispatchEvent(new Event('input')); }
+    }
 });
 
-document.querySelectorAll('.faq-question').forEach(question => {
-    question.addEventListener('click', () => {
-        const item = question.parentElement;
-        const icon = question.querySelector('i');
+/* --- 6. LEAD SCORING LOGIC --- */
+function applyFilters(resetPage = true) {
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    const statusFilter = document.getElementById('filterStatus').value;
+    const opFilter = document.getElementById('filterOperation').value;
 
-        // Toggle the active class on the faq-item
-        item.classList.toggle('active');
+    // We select the rows from the table
+    const tableBody = document.getElementById("ruleTable");
+    if (!tableBody) return; // Exit if we aren't on the scoring page
+    
+    const rows = Array.from(tableBody.querySelectorAll("tr")).filter(row => row.cells.length > 1);
 
-        // Change icon from down to up (chevron effect)
-        if (item.classList.contains('active')) {
-            icon.classList.remove('fa-chevron-down');
-            icon.classList.add('fa-chevron-up');
+    rows.forEach(row => {
+        const name = row.cells[0].textContent.toLowerCase();
+        const op = row.cells[1].innerText.trim();
+        // This looks for the label we fixed earlier
+        const statusLabel = row.querySelector('.status-label');
+        const status = statusLabel ? statusLabel.innerText.trim() : "";
+
+        const matchesSearch = name.includes(searchTerm);
+        const matchesStatus = (statusFilter === 'all' || status === statusFilter);
+        const matchesOp = (opFilter === 'all' || op === opFilter);
+
+        if (matchesSearch && matchesStatus && matchesOp) {
+            row.style.display = "";
         } else {
-            icon.classList.remove('fa-chevron-up');
-            icon.classList.add('fa-chevron-down');
+            row.style.display = "none";
         }
     });
-});
+}
+
+// Global function so the checkbox onchange="toggleStatus(...)" can find it
+window.toggleStatus = function(id, checkbox) {
+    fetch('/toggle_status/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: checkbox.checked })
+    }).then(() => {
+        const label = checkbox.parentElement.querySelector('.status-label');
+        if (label) {
+            label.innerText = checkbox.checked ? "Active" : "Not Active";
+        }
+        // Re-run the filter to update the view
+        applyFilters(false);
+    });
+};
