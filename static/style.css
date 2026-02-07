@@ -189,3 +189,38 @@ cursor: pointer;
 .sidebar {
     z-index: 100; /* Lower than the modal's 1060 */
 }
+
+/* --- INQUIRY REPOSITORY EXTRAS --- */
+.badge-urgent { background: #fee2e2; color: #dc2626; }
+.badge-new { background: #dcfce7; color: #16a34a; }
+
+/* Chat Bubbles for Detail Page */
+.message-bubble {
+    padding: 10px 15px;
+    border-radius: 15px;
+    max-width: 70%;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+}
+.message-left .message-bubble { background: #fff; border: 1px solid #e2e8f0; align-self: flex-start; }
+.message-right .message-bubble { background: var(--blue); color: white; align-self: flex-end; margin-left: auto; }
+
+/* Message Bubbles */
+.message-bubble {
+    padding: 10px 14px;
+    border-radius: 12px;
+    max-width: 80%;
+    font-size: 14px;
+}
+.agent-msg {
+    background: var(--blue);
+    color: white;
+    align-self: flex-end;
+    border-bottom-right-radius: 2px;
+}
+.customer-msg {
+    background: #e2e8f0;
+    color: var(--slate-900);
+    align-self: flex-start;
+    border-bottom-left-radius: 2px;
+}

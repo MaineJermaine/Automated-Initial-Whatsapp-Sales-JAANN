@@ -2,12 +2,12 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
-# Move all configurations to the top
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# --- Database Model ---
+# --- 1. MODELS (All models must be defined before create_all) ---
+
 class Rule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -16,49 +16,90 @@ class Rule(db.Model):
     operation = db.Column(db.String(10), nullable=False, default='+') 
     active = db.Column(db.Boolean, default=True)
 
-# Create tables if they don't exist
+class Inquiry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    customer = db.Column(db.String(100), nullable=False)
+    assigned_rep = db.Column(db.String(50))
+    inquiry_type = db.Column(db.String(50))
+    status = db.Column(db.String(20), default='New')
+    description = db.Column(db.Text)
+    notes = db.Column(db.Text)
+    messages = db.relationship('Message', backref='inquiry', cascade="all, delete-orphan")
+
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=False)
+    sender = db.Column(db.String(50))
+    text = db.Column(db.Text)
+    time = db.Column(db.String(50))
+    is_agent = db.Column(db.Boolean, default=False)
+
+# Create tables logic
 with app.app_context():
     db.create_all()
 
-# --- ROUTES ---
+# --- 2. ROUTES ---
 
-# 1. Main Dashboard
-# Update this in your app.py
 @app.route('/')
 @app.route('/dashboard')
 def dashboard():
-    # Fetch all rules so the search bar knows they exist immediately
-    all_rules = Rule.query.all() 
-    return render_template('admin_dashboard_main_hub.html', all_rules=all_rules)
+    all_rules = Rule.query.all()
+    # ADD THIS LINE: Fetch all inquiries too
+    all_inquiries = Inquiry.query.all() 
+    return render_template('admin_dashboard_main_hub.html', 
+                           all_rules=all_rules, 
+                           all_inquiries=all_inquiries)
 
-# 2. Customer List
 @app.route('/customers')
 def customers():
     return render_template('customer-list.html')
 
-# 3. Chat History
 @app.route('/history')
 def history():
     return render_template('chat-history.html')
 
-# 4. Templates
 @app.route('/templates-manager')
 def templates_manager():
     return render_template('auto_reply_template_manager.html')
 
-# 5. Inquiry Repository
 @app.route('/repository')
 def repository():
     return render_template('inquiry-repository.html')
 
-# 6. Lead Scoring (Main Page)
 @app.route('/scoring')
 def lead_scoring():
-    # We query the rules here so they show up on the merged page
     rules = Rule.query.all()
     return render_template('lead-scoring.html', rules=rules)
 
-# 7. Add Rule Configuration
+# Route to show the Detail/Chat page
+@app.route('/inquiry/<int:id>')
+def inquiry_detail(id):
+    inquiry = Inquiry.query.get_or_404(id)
+    return render_template('inquiry_detail.html', inquiry=inquiry)
+
+# API to fetch messages for the chat
+@app.route('/api/inquiry/<int:id>/messages')
+def get_messages(id):
+    inquiry = Inquiry.query.get_or_404(id)
+    messages = [{'sender': m.sender, 'text': m.text, 'time': m.time, 'is_agent': m.is_agent} for m in inquiry.messages]
+    return jsonify(messages)
+
+# API to send a new message
+@app.route('/api/inquiry/<int:id>/message', methods=['POST'])
+def send_message(id):
+    data = request.get_json()
+    new_msg = Message(
+        inquiry_id=id,
+        sender="Admin", # Or use data.get('sender')
+        text=data.get('text'),
+        time="Just now", # You can use datetime.now() for real timestamps
+        is_agent=True
+    )
+    db.session.add(new_msg)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+# Lead Scoring Logic (Add/Edit/Delete)
 @app.route('/add_rule', methods=['GET', 'POST'])
 def add_rule():
     if request.method == 'POST':
@@ -71,10 +112,9 @@ def add_rule():
         )
         db.session.add(new_rule)
         db.session.commit()
-        return redirect(url_for('lead_scoring')) # Updated to lead_scoring
+        return redirect(url_for('lead_scoring'))
     return render_template('rule_form.html', rule=None, title="New Rule Configuration")
 
-# 8. Edit Rule
 @app.route('/edit_rule/<int:id>', methods=['GET', 'POST'])
 def edit_rule(id):
     rule = Rule.query.get_or_404(id)
@@ -85,10 +125,9 @@ def edit_rule(id):
         rule.operation = request.form.get('operation')
         rule.active = True if request.form.get('active') else False
         db.session.commit()
-        return redirect(url_for('lead_scoring')) # Updated to lead_scoring
+        return redirect(url_for('lead_scoring'))
     return render_template('rule_form.html', rule=rule, title="Edit Rule Configuration")
 
-# 9. Delete Rule
 @app.route('/delete_rule/<int:id>')
 def delete_rule(id):
     rule = Rule.query.get_or_404(id)
@@ -96,7 +135,6 @@ def delete_rule(id):
     db.session.commit()
     return redirect(url_for('lead_scoring'))
 
-# 10. AJAX Toggle
 @app.route('/toggle_status/<int:id>', methods=['POST'])
 def toggle_status(id):
     rule = Rule.query.get_or_404(id)
@@ -105,10 +143,49 @@ def toggle_status(id):
     db.session.commit()
     return jsonify({'success': True})
 
+# --- 3. INQUIRY REPOSITORY API ---
+
+@app.route('/api/inquiries')
+def get_inquiries():
+    search = request.args.get('search', '').lower()
+    status_filters = request.args.getlist('status[]')
+    
+    query = Inquiry.query
+    if search:
+        query = query.filter(Inquiry.customer.ilike(f'%{search}%'))
+    if status_filters:
+        query = query.filter(Inquiry.status.in_(status_filters))
+        
+    inquiries = query.all()
+    return jsonify([
+        {'id': i.id, 'customer': i.customer, 'inquiry_type': i.inquiry_type, 
+         'status': i.status, 'assigned_rep': i.assigned_rep} for i in inquiries
+    ])
+
+@app.route('/inquiry/new')
+def inquiry_new():
+    return render_template('inquiry_new.html')
+
+@app.route('/api/inquiry/create', methods=['POST'])
+def api_create_inquiry():
+    data = request.get_json()
+    new_inquiry = Inquiry(
+        customer=data.get('customer'),
+        assigned_rep=data.get('assigned_rep'),
+        inquiry_type=data.get('inquiry_type'),
+        status=data.get('status', 'New'),
+        description=data.get('description', ''),
+        notes=data.get('notes', '')
+    )
+    db.session.add(new_inquiry)
+    db.session.commit()
+    return jsonify({"ok": True, "id": new_inquiry.id})
+
 # --- Error Handlers ---
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
 
+# --- START SERVER (This must always be at the very bottom!) ---
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
