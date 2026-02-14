@@ -224,3 +224,66 @@ cursor: pointer;
     align-self: flex-start;
     border-bottom-left-radius: 2px;
 }
+
+/* Add to style.css */
+.avatar-circle {
+    width: 45px;
+    height: 45px;
+    background-color: var(--blue);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+    text-transform: uppercase;
+}
+
+/* --- SEARCH DROPDOWN STYLING --- */
+.search-results-dropdown {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    padding: 8px 0;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 9999 !important; /* Forces it above everything */
+    
+    /* Animation */
+    opacity: 0;
+    animation: fadeIn 0.2s ease forwards;
+}
+
+.search-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: var(--slate-900);
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+}
+
+.search-item:last-child {
+    border-bottom: none;
+}
+
+.search-item:hover {
+    background-color: #f8fafc;
+    color: var(--blue);
+}
+
+.search-item .badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    min-width: 60px;
+    text-align: center;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}

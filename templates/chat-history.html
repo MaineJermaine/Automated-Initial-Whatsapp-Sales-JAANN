@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +9,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+<script>
+    // Injects the Python list into a JavaScript variable
+    window.backendSearchSeed = {{ search_seed | tojson }};
+</script>
+
 <body id="page-history">
     <aside class="sidebar">
         <h2>CRM Admin</h2>
@@ -22,14 +28,17 @@
     <main class="main">
         <div class="header d-flex justify-content-between align-items-center mb-4">
             <h1 class="h3 mb-0">Conversations</h1>
-            <div class="search-container"><input type="text" placeholder="Search..." class="taskbar-search form-control"></div>
+            <div class="search-container"><input type="text" placeholder="Search leads, rules, or customers..."
+                    class="taskbar-search form-control"></div>
         </div>
 
         <div class="chat-app-container row g-0 rounded shadow-sm">
             <div class="chat-sidebar col-md-4 col-lg-3 bg-white border-end">
-                <div class="p-3 border-bottom"><input type="text" class="form-control" placeholder="Search conversations..."></div>
+                <div class="p-3 border-bottom"><input type="text" class="form-control"
+                        placeholder="Search conversations..."></div>
                 <div class="chat-thread active p-3 border-bottom">
-                    <div class="d-flex justify-content-between"><strong>Ananya Ravikumar</strong><small class="text-muted">12:07 PM</small></div>
+                    <div class="d-flex justify-content-between"><strong>Ananya Ravikumar</strong><small
+                            class="text-muted">12:07 PM</small></div>
                     <p class="small text-muted mb-2">lightningboi676@gmail.com</p>
                     <div class="d-flex justify-content-between align-items-center">
                         <span class="badge bg-success">Ongoing</span>
@@ -42,21 +51,26 @@
                 <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-white">
                     <div class="d-flex align-items-center gap-3">
                         <div class="avatar">AR</div>
-                        <div><h4 class="h6 mb-0">Ananya Ravikumar</h4><small class="text-primary fw-bold">High Importance Lead</small></div>
+                        <div>
+                            <h4 class="h6 mb-0">Ananya Ravikumar</h4><small class="text-primary fw-bold">High Importance
+                                Lead</small>
+                        </div>
                     </div>
                     <div>
                         <button class="btn btn-sm btn-gray me-2">Transcribe</button>
                         <button class="btn btn-sm btn-blue">Take Over Chat</button>
                     </div>
                 </div>
-                <div class="chat-messages-area p-4 flex-grow-1" id="chatWindow" style="height: 400px; overflow-y: auto;">
+                <div class="chat-messages-area p-4 flex-grow-1" id="chatWindow"
+                    style="height: 400px; overflow-y: auto;">
                     <div class="msg-bubble msg-bot">Chatbot: Hello! How can I assist you today?</div>
                     <div class="msg-bubble msg-customer">Hi, I'm interested in the pricing for the premium plan.</div>
                     <div class="msg-bubble msg-agent">Hello! I can definitely help with that. Monthly or annual?</div>
                 </div>
                 <div class="chat-input p-3 border-top d-flex gap-2">
                     <button class="btn btn-gray rounded-circle">+</button>
-                    <input type="text" id="msgInput" class="form-control" placeholder="Type response..." onkeypress="checkEnter(event)">
+                    <input type="text" id="msgInput" class="form-control" placeholder="Type response..."
+                        onkeypress="checkEnter(event)">
                     <button class="btn btn-blue px-4" onclick="sendMessage()">Send</button>
                 </div>
             </div>
@@ -66,7 +80,7 @@
         function sendMessage() {
             const input = document.getElementById('msgInput');
             const window = document.getElementById('chatWindow');
-            if(input.value.trim() !== "") {
+            if (input.value.trim() !== "") {
                 const div = document.createElement('div');
                 div.className = 'msg-bubble msg-agent';
                 div.innerText = input.value;
@@ -75,9 +89,10 @@
                 window.scrollTop = window.scrollHeight;
             }
         }
-        function checkEnter(e) { if(e.key === 'Enter') sendMessage(); }
+        function checkEnter(e) { if (e.key === 'Enter') sendMessage(); }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
+
 </html>

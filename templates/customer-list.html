@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,11 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+<script>
+    // This takes the list from Python and gives it to JavaScript
+    window.backendSearchSeed = {{ search_seed | tojson }};
+</script>
+
 <body id="page-customers">
     <aside class="sidebar">
         <h2>CRM Admin</h2>
@@ -19,48 +25,60 @@
     </aside>
 
     <main class="main">
-        <div class="header d-flex justify-content-between align-items-center mb-4">
-            <h1 class="h3 mb-0">Customer Management</h1>
-            <button class="btn btn-blue" data-bs-toggle="modal" data-bs-target="#addCustomerModal">+ Add Customer</button>
+        <div class="header">
+            <div class="header-left">
+                <h1 class="h3 mb-0">Customer Management</h1>
+            </div>
+            <div class="search-container">
+                <input type="text" placeholder="Search leads, rules, or customers..." class="taskbar-search">
+            </div>
+            <div class="header-right">
+                <button class="btn btn-blue" data-bs-toggle="modal" data-bs-target="#addCustomerModal">+ Add
+                    Customer</button>
+            </div>
         </div>
 
-        <div class="row g-4">
-            <div class="col-12 col-lg-5">
-                <div class="card p-3 mb-4">
-                    <h3 class="h6 mb-3 fw-bold">Customer List</h3>
-                    <input type="text" class="form-control mb-3" placeholder="Search by ID, name or phone...">
-                    <div class="customer-item d-flex justify-content-between align-items-center mb-2 p-3 border rounded shadow-sm bg-white">
-                        <div><strong>Eugene Tan</strong><p class="small text-muted mb-0">ID: 12345678 • 2 days ago</p></div>
-                        <div class="btn-group btn-group-sm"><button class="btn btn-blue">View</button><button class="btn btn-gray">Edit</button></div>
-                    </div>
-                </div>
-                <div class="card p-3">
-                    <h3 class="h6 mb-3 fw-bold">Quick Edit Profile</h3>
-                    <div class="mb-3"><label class="form-label">Full Name</label><input type="text" class="form-control" value="Ananya Ravikumar"></div>
-                    <button class="btn btn-blue w-100">Update Profile</button>
-                </div>
-            </div>
+        <form method="GET" action="/customers" class="mb-4">
+            <input type="text" name="q" class="form-control" placeholder="Search by name or email..."
+                value="{{ query }}">
+        </form>
 
-            <div class="col-12 col-lg-7">
-                <div class="card p-4">
-                    <div class="d-flex align-items-center gap-3 mb-4">
-                        <div class="avatar bg-primary text-white p-3 rounded-circle">AR</div>
-                        <div><h3 class="h5 mb-0">Ananya Ravikumar</h3><p class="small text-muted mb-0">Assigned: Jayden Ng • <span class="text-success fw-bold">Active lead</span></p></div>
+        <div class="row g-4">
+            {% for c in customers %}
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card p-3 shadow-sm border-0 h-100">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="avatar-circle me-3">
+                            {{ c.name.split(' ')[0][0] }}{{ c.name.split(' ')[-1][0] if c.name.split(' ')|length > 1
+                            else '' }}
+                        </div>
+                        <div>
+                            <h5 class="mb-0 fw-bold">{{ c.name }}</h5>
+                            <small class="text-muted">{{ c.email }}</small>
+                        </div>
                     </div>
-                    <div class="row g-2 mb-4">
-                        <div class="col-6"><div class="info-box p-2 bg-light rounded"><small class="text-muted d-block">Contact</small>+65 9123 4567</div></div>
-                        <div class="col-6"><div class="info-box p-2 bg-light rounded"><small class="text-muted d-block">Location</small>Singapore</div></div>
+                    <div class="mb-3 small">
+                        <p class="mb-1 text-secondary"><strong>Phone:</strong> {{ c.phone }}</p>
+                        <p class="mb-1 text-secondary"><strong>Staff:</strong> {{ c.assigned_staff or 'Unassigned' }}
+                        </p>
                     </div>
-                    <div class="mb-4">
-                        <span class="tag badge bg-info-subtle text-primary me-2">New</span>
-                        <span class="tag badge bg-info-subtle text-primary me-2">High Budget</span>
+                    <div class="mb-3">
+                        {% if c.tags %}
+                        {% for tag in c.tags.split(',') %}
+                        <span class="badge bg-info-subtle text-primary small">{{ tag }}</span>
+                        {% endfor %}
+                        {% endif %}
                     </div>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-green w-50">WhatsApp Reply</button>
-                        <button class="btn btn-red w-50">Delete Lead</button>
+                    <div class="mt-auto d-flex gap-2">
+                        <a href="/customer/{{ c.id }}" class="btn btn-blue btn-sm w-100">View Profile</a>
                     </div>
                 </div>
             </div>
+            {% else %}
+            <div class="col-12 text-center py-5">
+                <p class="text-muted">No customers found. Try adding a new one!</p>
+            </div>
+            {% endfor %}
         </div>
     </main>
 
@@ -68,13 +86,29 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content p-3">
                 <h3 class="h5 mb-3 border-bottom pb-2">Add New Customer</h3>
-                <div class="mb-3"><label class="form-label">Name</label><input type="text" class="form-control" placeholder="Enter name"></div>
-                <div class="mb-3"><label class="form-label">Phone</label><input type="text" class="form-control" placeholder="+65..."></div>
-                <div class="d-flex gap-2"><button class="btn btn-blue w-100">Save</button><button class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button></div>
+
+                <div class="mb-3">
+                    <label class="form-label">Name</label>
+                    <input type="text" id="newCustName" class="form-control" placeholder="Enter name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="newCustEmail" class="form-control" placeholder="example@mail.com">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Phone</label>
+                    <input type="text" id="newCustPhone" class="form-control" placeholder="+65...">
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-blue w-100" onclick="saveCustomer()">Save</button>
+                    <button class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+                </div>
             </div>
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
+
 </html>

@@ -8,6 +8,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+<script>
+    // Injects the Python list into a JavaScript variable
+    window.backendSearchSeed = {{ search_seed | tojson }};
+</script>
 <body id="page-templates">
     <aside class="sidebar">
         <h2>CRM Admin</h2>

@@ -34,9 +34,44 @@ class Message(db.Model):
     time = db.Column(db.String(50))
     is_agent = db.Column(db.Boolean, default=False)
 
+# Add this to your models in app.py
+class Customer(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), unique=True)
+    phone = db.Column(db.String(20))
+    location = db.Column(db.String(100))
+    assigned_staff = db.Column(db.String(100))
+    status = db.Column(db.String(50), default="Active")
+    tags = db.Column(db.String(200)) # Stored as "VIP,New,Returning"
+    notes = db.Column(db.Text)
+    last_contact = db.Column(db.String(50))
+
 # Create tables logic
 with app.app_context():
     db.create_all()
+
+@app.context_processor
+def inject_search_data():
+    # 1. Fetch all data from your SQLite tables
+    customers = Customer.query.all()
+    inquiries = Inquiry.query.all()
+    rules = Rule.query.all()
+    
+    # 2. Format them into a list the Search Bar understands
+    search_seed = []
+    
+    for c in customers:
+        search_seed.append({"display": c.name, "category": "Customer", "page": "/customers"})
+        
+    for i in inquiries:
+        # We search by the customer name inside the inquiry
+        search_seed.append({"display": f"Inquiry: {i.customer}", "category": "Inquiry", "page": f"/inquiry/{i.id}"})
+        
+    for r in rules:
+        search_seed.append({"display": r.name, "category": "Rule", "page": "/scoring"})
+        
+    return dict(search_seed=search_seed)
 
 # --- 2. ROUTES ---
 
@@ -52,7 +87,46 @@ def dashboard():
 
 @app.route('/customers')
 def customers():
-    return render_template('customer-list.html')
+    query = request.args.get('q', '')
+    if query:
+        # Search by name or email
+        customers_list = Customer.query.filter(
+            (Customer.name.ilike(f'%{query}%')) | 
+            (Customer.email.ilike(f'%{query}%'))
+        ).all()
+    else:
+        customers_list = Customer.query.all()
+    
+    return render_template('customer-list.html', customers=customers_list, query=query)
+
+@app.route('/customer/<int:id>')
+def customer_profile(id):
+    # Fetch customer from database.db
+    customer = Customer.query.get_or_404(id)
+    return render_template('customer_details.html', c=customer)
+
+@app.route('/api/customer/create', methods=['POST'])
+def api_create_customer():
+    data = request.get_json()
+    
+    # Check if email already exists (safety check from your friend's logic)
+    existing = Customer.query.filter_by(email=data.get('email')).first()
+    if existing:
+        return jsonify({"error": "A customer with this email already exists"}), 400
+
+    new_cust = Customer(
+        name=data.get('name'),
+        email=data.get('email'),
+        phone=data.get('phone'),
+        status="Active",  # Default for new customers
+        tags="New"        # Default tag
+    )
+    
+    db.session.add(new_cust)
+    db.session.commit()
+    
+    return jsonify({"ok": True})
+
 
 @app.route('/history')
 def history():

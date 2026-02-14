@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Customer Profile - {{ c.name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body id="page-customers">
+    <aside class="sidebar">
+        <h2>CRM Admin</h2>
+        <a href="/dashboard" class="nav-link nav-dashboard active">Dashboard</a>
+        <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
+        <a href="/history" class="nav-link nav-history">Chat History</a>
+        <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
+        <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
+    </aside>
+
+    <main class="main">
+        <div class="header mb-4">
+            <a href="/customers" class="text-decoration-none small">← Back to List</a>
+            <h1 class="h3 mt-2">{{ c.name }}</h1>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="card p-4 shadow-sm border-0">
+                    <div class="avatar-circle mb-3" style="width: 80px; height: 80px; font-size: 2rem;">
+                        {{ c.name.split(' ')[0][0] }}{{ c.name.split(' ')[-1][0] if c.name.split(' ')|length > 1 else '' }}
+                    </div>
+                    <p><strong>Email:</strong> <br> {{ c.email }}</p>
+                    <p><strong>Phone:</strong> <br> {{ c.phone or 'N/A' }}</p>
+                    <p><strong>Location:</strong> <br> {{ c.location or 'Not Set' }}</p>
+                    <hr>
+                    <p><strong>Assigned To:</strong> <br> {{ c.assigned_staff or 'Unassigned' }}</p>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <div class="card p-4 shadow-sm border-0 mb-4">
+                    <h5 class="fw-bold">Internal Sales Notes</h5>
+                    <textarea class="form-control mb-3" rows="5" id="customerNotes">{{ c.notes or '' }}</textarea>
+                    <button class="btn btn-blue btn-sm" onclick="saveNotes()">Save Notes</button>
+                </div>
+
+                <div class="card p-4 shadow-sm border-0">
+                    <h5 class="fw-bold">Inquiry History</h5>
+                    <p class="small text-muted">Customer has 1 active inquiry.</p>
+                    <a href="/repository?q={{ c.name }}" class="btn btn-outline-secondary btn-sm">View Linked Inquiries</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        async function saveNotes() {
+            const notes = document.getElementById('customerNotes').value;
+            // You can add a route in app.py to save these notes later!
+            alert("Notes saved to " + "{{ c.name }}");
+        }
+    </script>
+</body>
+</html>
