@@ -177,8 +177,8 @@ def repository():
 @app.route('/scoring')
 def lead_scoring():
     rules = Rule.query.all()
-    search_seed = [rule.name for rule in rules]  # Provide search suggestions
-    return render_template('lead-scoring.html', rules=rules, search_seed=search_seed)
+    # Use the global context processor's search_seed instead of overriding it
+    return render_template('lead-scoring.html', rules=rules)
 
 # Route to show the Detail/Chat page
 @app.route('/inquiry/<int:id>')
