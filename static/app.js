@@ -118,20 +118,7 @@ function initLeadsChart() {
     });
 }
 
-function applyFilters(animate = true) {
-    const search = document.getElementById('ruleSearch')?.value.toLowerCase() || "";
-    const opFilter = document.getElementById('opFilter')?.value || "all";
-    const rows = document.querySelectorAll('#ruleTable tr');
 
-    rows.forEach(row => {
-        const name = row.cells[0]?.innerText.toLowerCase() || "";
-        const keywords = row.cells[1]?.innerText.toLowerCase() || "";
-        const op = row.cells[3]?.innerText.trim();
-        const matchesSearch = name.includes(search) || keywords.includes(search);
-        const matchesOp = opFilter === "all" || op === opFilter;
-        row.style.display = (matchesSearch && matchesOp) ? "" : "none";
-    });
-}
 
 async function refreshInquiryTable() {
     const search = document.getElementById('search-input')?.value || "";
@@ -226,10 +213,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     // E. SCORING PAGE SPECIFIC
-    if (pageId === 'page-scoring') {
-        document.getElementById('ruleSearch')?.addEventListener('input', () => applyFilters());
-        document.getElementById('opFilter')?.addEventListener('change', () => applyFilters());
-    }
+    // (Filter logic is handled inline in lead-scoring.html)
 
     // F. REPOSITORY PAGE SPECIFIC
     if (pageId === 'page-repository') {

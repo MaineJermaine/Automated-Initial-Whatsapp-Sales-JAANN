@@ -152,6 +152,15 @@ def api_create_customer():
     
     return jsonify({"ok": True})
 
+@app.route('/api/customer/<int:id>/notes', methods=['PUT'])
+def api_update_customer_notes(id):
+    customer = Customer.query.get_or_404(id)
+    data = request.get_json()
+    
+    customer.notes = data.get('notes', '')
+    db.session.commit()
+    
+    return jsonify({"success": True, "message": "Notes saved successfully"})
 
 @app.route('/history')
 def history():
@@ -168,7 +177,8 @@ def repository():
 @app.route('/scoring')
 def lead_scoring():
     rules = Rule.query.all()
-    return render_template('lead-scoring.html', rules=rules)
+    search_seed = [rule.name for rule in rules]  # Provide search suggestions
+    return render_template('lead-scoring.html', rules=rules, search_seed=search_seed)
 
 # Route to show the Detail/Chat page
 @app.route('/inquiry/<int:id>')

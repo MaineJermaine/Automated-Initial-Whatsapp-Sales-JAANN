@@ -9,10 +9,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<script>
-    // Injects the Python list into a JavaScript variable
-    window.backendSearchSeed = {{ search_seed | tojson }};
-</script>
+
 
 <body id="page-scoring">
     <aside class="sidebar">
@@ -56,10 +53,10 @@
                 <label class="small fw-bold mb-1 d-block">Operation:</label>
                 <select id="filterOperation" class="form-select form-select-sm" onchange="applyFilters()">
                     <option value="all">All Ops</option>
-                    <option value="Add (+)">Add (+)</option>
-                    <option value="Subtract (-)">Subtract (-)</option>
-                    <option value="Multiply (*)">Multiply (*)</option>
-                    <option value="Divide (/)">Divide (/)</option>
+                    <option value="+">Add (+)</option>
+                    <option value="-">Subtract (-)</option>
+                    <option value="*">Multiply (*)</option>
+                    <option value="/">Divide (/)</option>
                 </select>
             </div>
         </div>
@@ -135,17 +132,28 @@
             const statusFilter = document.getElementById('filterStatus').value;
             const opFilter = document.getElementById('filterOperation').value;
 
+            console.log('Filter values:', { searchTerm, statusFilter, opFilter });
+
             filteredRows = allRows.filter(row => {
                 const name = row.cells[0].textContent.toLowerCase();
-                const op = row.cells[1].innerText.trim();
+                const opText = row.cells[1].innerText.trim();
+                // Extract just the symbol from text like "Add (+)" -> "+"
+                const opMatch = opText.match(/\(([+\-*/])\)/);
+                const op = opMatch ? opMatch[1] : opText;
                 const status = row.querySelector('.status-label').innerText.trim();
+
+                console.log('Row data:', { name, op: `${opText} -> ${op}`, status });
 
                 const matchesSearch = name.includes(searchTerm);
                 const matchesStatus = (statusFilter === 'all' || status === statusFilter);
                 const matchesOp = (opFilter === 'all' || op === opFilter);
 
+                console.log('Matches:', { matchesSearch, matchesStatus, matchesOp });
+
                 return matchesSearch && matchesStatus && matchesOp;
             });
+
+            console.log('Filtered rows count:', filteredRows.length);
 
             if (resetPage) currentPage = 1;
             updateUI();
