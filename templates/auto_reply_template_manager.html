@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,15 +10,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <script>
-    // Injects the Python list into a JavaScript variable
     window.backendSearchSeed = {{ search_seed | tojson }};
 </script>
+
 <body id="page-templates">
     <aside class="sidebar">
         <h2>CRM Admin</h2>
-        <a href="/dashboard" class="nav-link nav-dashboard active">Dashboard</a>
+        <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
-        <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
+        <a href="/templates-manager" class="nav-link nav-templates active">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
@@ -27,32 +28,191 @@
         <div class="header d-flex justify-content-between align-items-center mb-4">
             <h1 class="h3 mb-0">Auto-Reply Template Manager</h1>
             <div class="search-container">
-                <input type="text" placeholder="Search leads, rules, or customers..." class="taskbar-search form-control">
+                <input type="text" placeholder="Search global crm..." class="taskbar-search form-control">
             </div>
         </div>
 
         <div class="row g-4 mb-4">
-            <div class="col-12 col-md-4"><div class="card p-3"><h3>Total Templates</h3><p class="h2 fw-bold">5</p></div></div>
-            <div class="col-12 col-md-4"><div class="card p-3"><h3>Total FAQs</h3><p class="h2 fw-bold">4</p></div></div>
-            <div class="col-12 col-md-4"><div class="card p-3"><h3>Template Usage</h3><p class="h2 fw-bold">387</p></div></div>
+            <div class="col-12 col-md-4">
+                <div class="card p-3">
+                    <h3>Total Templates</h3>
+                    <p class="h2 fw-bold" id="totalTemplates">0</p>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="card p-3">
+                    <h3>Total FAQs</h3>
+                    <p class="h2 fw-bold" id="totalFAQs">0</p>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="card p-3">
+                    <h3>Total Usage</h3>
+                    <p class="h2 fw-bold" id="totalUsage">0</p>
+                </div>
+            </div>
         </div>
 
         <div class="card p-4">
-            <ul class="nav nav-tabs mb-4 border-bottom-0">
-                <li class="nav-item"><a class="nav-link active fw-bold" href="#">Templates</a></li>
-                <li class="nav-item"><a class="nav-link text-muted" href="#">FAQ Management</a></li>
+            <ul class="nav nav-tabs mb-4 border-bottom-0 tab-navigation">
+                <li class="nav-item"><button class="nav-link active fw-bold tab-button"
+                        data-tab="templates">Templates</button></li>
+                <li class="nav-item"><button class="nav-link text-muted tab-button" data-tab="faqs">FAQ
+                        Management</button></li>
+                <li class="nav-item"><button class="nav-link text-muted tab-button" data-tab="preview">Customer
+                        Preview</button></li>
             </ul>
 
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <input type="text" class="form-control w-25" placeholder="Search templates...">
-                <button class="btn btn-blue">+ Create Template</button>
+            <div class="tab-content active" id="templates-tab">
+                <div class="d-flex justify-content-between align-items-center mb-4 gap-2">
+                    <div class="d-flex gap-2 w-75">
+                        <input type="text" id="searchInput" class="form-control" placeholder="Search templates...">
+                        <select id="categoryFilter" class="form-select w-25">
+                            <option value="">All Categories</option>
+                            <option value="Greeting">Greeting</option>
+                            <option value="Information">Information</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Support">Support</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-blue" onclick="openTemplateModal('create')">+ Create Template</button>
+                </div>
+                <div id="templateList" class="template-grid"></div>
             </div>
-            <div class="text-center py-5 border rounded bg-light text-muted">
-                Template Library Content Goes Here
+
+            <div class="tab-content" id="faqs-tab">
+                <div class="d-flex justify-content-between align-items-center mb-4 gap-2">
+                    <div class="d-flex gap-2 w-75">
+                        <input type="text" id="faqSearchInput" class="form-control" placeholder="Search FAQs...">
+                        <select id="faqCategoryFilter" class="form-select w-25">
+                            <option value="">All Categories</option>
+                            <option value="General">General</option>
+                            <option value="Information">Information</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Support">Support</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-blue" onclick="openFAQModal('create')">+ Create FAQ</button>
+                </div>
+                <div id="faqList" class="faq-grid"></div>
+            </div>
+
+            <div class="tab-content" id="preview-tab">
+                <div class="customer-preview-container border rounded p-3 bg-light">
+                    <div class="chat-interface">
+                        <div class="chat-container bg-white border rounded">
+                            <div class="chat-messages p-3" id="chatMessages" style="height: 300px; overflow-y: auto;">
+                                <div class="message-bubble bot-message bg-light p-2 rounded mb-2">
+                                    Hello! I'm your AI assistant. Ask me anything!
+                                </div>
+
+                                <button class="btn btn-sm btn-outline-primary mb-2" id="showFaqButton"
+                                    onclick="toggleChatFAQ()">Show FAQ</button>
+                                <div class="chat-faq-section border rounded p-2 mb-2" id="chatFaqSection"
+                                    style="display:none; background:#f8f9fa;">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <small class="fw-bold">Frequently Asked Questions</small>
+                                        <button class="btn btn-sm btn-link p-0 text-decoration-none"
+                                            onclick="toggleChatFAQ()">Hide</button>
+                                    </div>
+                                    <div id="chatFaqFilters" class="d-flex gap-1 overflow-auto mb-2 pb-1"></div>
+                                    <div id="chatFaqList"></div>
+                                </div>
+                            </div>
+
+                            <div class="chat-input-area p-3 border-top">
+                                <div class="input-group">
+                                    <input type="text" id="chatInput" class="form-control"
+                                        placeholder="Type a message...">
+                                    <button class="btn btn-blue" onclick="sendMessage()">Send</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
+
+    <div class="modal" id="templateModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="d-flex justify-content-between mb-3">
+                <h3 id="templateModalTitle">Create Template</h3>
+                <button class="btn-close" onclick="closeTemplateModal()"></button>
+            </div>
+            <form id="templateForm">
+                <input type="hidden" id="templateId">
+                <div class="mb-3">
+                    <label>Title</label>
+                    <input type="text" id="templateTitle" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label>Category</label>
+                    <select id="templateCategory" class="form-select" required>
+                        <option value="Greeting">Greeting</option>
+                        <option value="Information">Information</option>
+                        <option value="Sales">Sales</option>
+                        <option value="Support">Support</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label>Keywords</label>
+                    <div class="input-group mb-2">
+                        <input type="text" id="keywordInput" class="form-control"
+                            placeholder="Type keyword & press Add">
+                        <button type="button" class="btn btn-secondary" onclick="addKeyword()">Add</button>
+                    </div>
+                    <div id="keywordList" class="d-flex flex-wrap gap-2"></div>
+                </div>
+                <div class="mb-3">
+                    <label>Message</label>
+                    <textarea id="templateMessage" class="form-control" rows="4" required></textarea>
+                </div>
+                <div class="text-end">
+                    <button type="button" class="btn btn-secondary" onclick="closeTemplateModal()">Cancel</button>
+                    <button type="submit" class="btn btn-blue">Save Template</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="faqModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="d-flex justify-content-between mb-3">
+                <h3 id="faqModalTitle">Create FAQ</h3>
+                <button class="btn-close" onclick="closeFAQModal()"></button>
+            </div>
+            <form id="faqForm">
+                <input type="hidden" id="faqId">
+                <div class="mb-3">
+                    <label>Question</label>
+                    <input type="text" id="faqQuestion" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label>Category</label>
+                    <select id="faqCategory" class="form-select" required>
+                        <option value="General">General</option>
+                        <option value="Information">Information</option>
+                        <option value="Sales">Sales</option>
+                        <option value="Support">Support</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label>Answer</label>
+                    <textarea id="faqAnswer" class="form-control" rows="4" required></textarea>
+                </div>
+                <div class="text-end">
+                    <button type="button" class="btn btn-secondary" onclick="closeFAQModal()">Cancel</button>
+                    <button type="submit" class="btn btn-blue">Save FAQ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='auto_reply.js') }}"></script>
 </body>
+
 </html>

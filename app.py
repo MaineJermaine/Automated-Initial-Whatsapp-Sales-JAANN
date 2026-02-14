@@ -47,6 +47,23 @@ class Customer(db.Model):
     notes = db.Column(db.Text)
     last_contact = db.Column(db.String(50))
 
+class AutoReplyTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(50), nullable=False)
+    keywords = db.Column(db.Text)  # Stored as comma-separated string
+    usage_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.String(50))
+
+class FAQ(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    question = db.Column(db.String(200), nullable=False)
+    answer = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(50), nullable=False)
+    click_count = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.String(50))
+
 # Create tables logic
 with app.app_context():
     db.create_all()
@@ -57,6 +74,8 @@ def inject_search_data():
     customers = Customer.query.all()
     inquiries = Inquiry.query.all()
     rules = Rule.query.all()
+    templates = AutoReplyTemplate.query.all()
+    faqs = FAQ.query.all()
     
     # 2. Format them into a list the Search Bar understands
     search_seed = []
@@ -70,6 +89,12 @@ def inject_search_data():
         
     for r in rules:
         search_seed.append({"display": r.name, "category": "Rule", "page": "/scoring"})
+    
+    for t in templates:
+        search_seed.append({"display": t.title, "category": "Template", "page": "/templates-manager"})
+    
+    for f in faqs:
+        search_seed.append({"display": f.question, "category": "FAQ", "page": "/templates-manager"})
         
     return dict(search_seed=search_seed)
 
@@ -217,6 +242,110 @@ def toggle_status(id):
     db.session.commit()
     return jsonify({'success': True})
 
+# 1. Template API
+@app.route('/api/templates', methods=['GET', 'POST'])
+def handle_templates():
+    if request.method == 'POST':
+        data = request.get_json()
+        new_template = AutoReplyTemplate(
+            title=data['title'],
+            message=data['message'],
+            category=data['category'],
+            keywords=','.join(data['keywords']), # Convert list to string
+            created_at="Just now" # You can use datetime.now()
+        )
+        db.session.add(new_template)
+        db.session.commit()
+        return jsonify(template_to_dict(new_template))
+    
+    templates = AutoReplyTemplate.query.all()
+    return jsonify([template_to_dict(t) for t in templates])
+
+@app.route('/api/templates/<int:id>', methods=['PUT', 'DELETE'])
+def handle_single_template(id):
+    template = AutoReplyTemplate.query.get_or_404(id)
+    if request.method == 'DELETE':
+        db.session.delete(template)
+        db.session.commit()
+        return jsonify({"success": True})
+    
+    data = request.get_json()
+    template.title = data['title']
+    template.message = data['message']
+    template.category = data['category']
+    template.keywords = ','.join(data['keywords'])
+    db.session.commit()
+    return jsonify(template_to_dict(template))
+
+# 2. FAQ API
+@app.route('/api/faqs', methods=['GET', 'POST'])
+def handle_faqs():
+    if request.method == 'POST':
+        data = request.get_json()
+        new_faq = FAQ(
+            question=data['question'],
+            answer=data['answer'],
+            category=data['category'],
+            created_at="Just now"
+        )
+        db.session.add(new_faq)
+        db.session.commit()
+        return jsonify(faq_to_dict(new_faq))
+    
+    faqs = FAQ.query.all()
+    return jsonify([faq_to_dict(f) for f in faqs])
+
+@app.route('/api/faqs/<int:id>', methods=['PUT', 'DELETE'])
+def handle_single_faq(id):
+    faq = FAQ.query.get_or_404(id)
+    if request.method == 'DELETE':
+        db.session.delete(faq)
+        db.session.commit()
+        return jsonify({"success": True})
+    
+    data = request.get_json()
+    faq.question = data['question']
+    faq.answer = data['answer']
+    faq.category = data['category']
+    db.session.commit()
+    return jsonify(faq_to_dict(faq))
+
+@app.route('/api/faqs/<int:id>/click', methods=['POST'])
+def increment_faq_click(id):
+    faq = FAQ.query.get_or_404(id)
+    faq.click_count += 1
+    db.session.commit()
+    return jsonify(faq_to_dict(faq))
+
+# 3. Auto-Reply Logic API
+@app.route('/api/auto-reply', methods=['POST'])
+def auto_reply():
+    data = request.get_json()
+    user_msg = data.get('message', '').lower()
+    
+    # 1. Search for Keyword Match in Templates
+    templates = AutoReplyTemplate.query.all()
+    matched_replies = []
+    
+    for t in templates:
+        keywords = t.keywords.lower().split(',')
+        if any(k.strip() in user_msg for k in keywords if k.strip()):
+            matched_replies.append(t.message)
+            t.usage_count += 1 # Increment usage
+            
+    if matched_replies:
+        db.session.commit()
+        return jsonify({
+            "source": "template",
+            "replies": matched_replies
+        })
+    
+    # 2. Fallback to AI (Mocked for now)
+    return jsonify({
+        "source": "ai",
+        "replies": ["I see you're asking about that. Our AI agent is currently processing your request... (Integration Placeholder)"]
+    })
+
 # --- 3. INQUIRY REPOSITORY API ---
 
 @app.route('/api/inquiries')
@@ -254,6 +383,28 @@ def api_create_inquiry():
     db.session.add(new_inquiry)
     db.session.commit()
     return jsonify({"ok": True, "id": new_inquiry.id})
+
+# Helper functions to serialize objects
+def template_to_dict(t):
+    return {
+        'id': t.id,
+        'title': t.title,
+        'message': t.message,
+        'category': t.category,
+        'keywords': t.keywords.split(',') if t.keywords else [],
+        'usageCount': t.usage_count,
+        'createdAt': t.created_at
+    }
+
+def faq_to_dict(f):
+    return {
+        'id': f.id,
+        'question': f.question,
+        'answer': f.answer,
+        'category': f.category,
+        'clickCount': f.click_count,
+        'createdAt': f.created_at
+    }
 
 # --- Error Handlers ---
 @app.errorhandler(404)
