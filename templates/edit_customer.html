@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Customer - {{ c.name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body id="page-customers">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <h2>CRM Admin</h2>
+        <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
+        <a href="/customers" class="nav-link nav-customers active">Customer List</a>
+        <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
+        <a href="/history" class="nav-link nav-history">Chat History</a>
+        <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
+        <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+
+        <!-- HEADER -->
+        <div class="header">
+            <div class="header-left">
+                <a href="{{ url_for('customer_profile', id=c.id) }}" class="btn btn-gray">
+                    ← Back
+                </a>
+                <div>
+                    <h2 style="margin:0">Edit Customer</h2>
+                    <div style="color: var(--gray); font-size:0.85rem;">
+                        Update customer profile details
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FORM CARD -->
+        <div class="form-center">
+            <div class="card form-card">
+                <form method="POST" id="editForm" novalidate>
+
+                    <!-- FIRST + LAST NAME -->
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input type="text" id="firstName" value="{{ c.name.split(' ')[0] }}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Last Name *</label>
+                        <input type="text" id="lastName" value="{{ c.name.split(' ')[1:] | join(' ') }}" required>
+                    </div>
+
+                    <!-- Hidden field that backend still expects -->
+                    <input type="hidden" name="name" id="fullName">
+
+                    <!-- EMAIL -->
+                    <div class="form-group">
+                        <label>Email Address *</label>
+                        <input type="email" name="email" id="email" value="{{ c.email }}" required>
+                        <small class="error" id="emailError"></small>
+                    </div>
+
+                    <!-- PHONE -->
+                    <div class="form-group">
+                        <label>Phone *</label>
+                        <input type="text" name="phone" id="phone" value="{{ c.phone }}" required pattern="^[0-9]+$">
+                        <small class="error" id="phoneError"></small>
+                    </div>
+
+                    <!-- LOCATION -->
+                    <div class="form-group">
+                        <label>Location *</label>
+                        <input type="text" name="location" id="location" value="{{ c.location }}" required>
+                        <small class="error" id="locationError"></small>
+                    </div>
+                    <!-- TAGS -->
+                    <div class="form-group">
+                        <label>Tags</label>
+
+                        <div class="tag-picker">
+                            {% set current_tags = c.tags.split(',') if c.tags else [] %}
+
+                            {% for tag, color in tags_inventory.items() %}
+                            <label class="tag-option">
+                                <input type="checkbox" name="tags" value="{{ tag }}" {% if tag in current_tags
+                                    %}checked{% endif %}>
+                                <span class="tag-pill-ui">
+                                    {{ tag }}
+                                </span>
+                            </label>
+                            {% endfor %}
+                        </div>
+
+                        <!-- ADD NEW TAG -->
+                        <div class="tag-new">
+                            <input type="text" name="new_tag" placeholder="Add new tag..." class="form-control">
+                            <small class="text-muted">
+                                Enter a new tag to create and assign.
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- INTERNAL NOTES (OPTIONAL) -->
+                    <div class="form-group">
+                        <label>Internal Notes</label>
+                        <textarea name="notes" id="notes" rows="4">{{ c.notes or '' }}</textarea>
+                        <small class="error" id="notesError"></small>
+                    </div>
+
+                    <div style="margin-top:20px; display:flex; gap:10px;">
+                        <button class="btn btn-green" type="submit">Save Changes</button>
+                        <a href="{{ url_for('customer_profile', id=c.id) }}" class="btn btn-gray">Cancel</a>
+                        <button type="button" class="btn btn-blue" onclick="openLinkChatModal()">💬 Link to
+                            Chat</button>
+                    </div>
+
+                </form>
+
+            </div>
+
+    </main>
+
+    <!-- LINK TO CHAT MODAL -->
+    <div class="modal fade" id="linkChatModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">💬 Link Customer to Chat</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">Select a chat conversation to link this customer to.</p>
+                    <select class="form-select" id="chatSessionSelect">
+                        <option value="">-- Select a chat --</option>
+                    </select>
+                    <div id="chatLoadingMsg" class="text-muted small mt-2">Loading chats...</div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-blue" onclick="linkToChat()">Link</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        const customerId = {{ c.id }};
+        let chatSessions = [];
+
+        async function openLinkChatModal() {
+            const modal = new bootstrap.Modal(document.getElementById('linkChatModal'));
+            modal.show();
+
+            // Fetch chat sessions
+            const res = await fetch('/api/chat/sessions');
+            chatSessions = await res.json();
+
+            const select = document.getElementById('chatSessionSelect');
+            const loadingMsg = document.getElementById('chatLoadingMsg');
+
+            select.innerHTML = '<option value="">-- Select a chat --</option>';
+            chatSessions.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = `${s.visitor_name} (${s.visitor_email}) - ${s.status}`;
+                if (s.linked_customer_id === customerId) {
+                    opt.textContent += ' ✓ Already linked';
+                    opt.selected = true;
+                }
+                select.appendChild(opt);
+            });
+
+            loadingMsg.style.display = 'none';
+        }
+
+        async function linkToChat() {
+            const select = document.getElementById('chatSessionSelect');
+            const sessionId = select.value;
+
+            if (!sessionId) {
+                alert('Please select a chat session.');
+                return;
+            }
+
+            await fetch(`/api/chat/session/${sessionId}/link-customer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customer_id: customerId })
+            });
+
+            alert('Customer linked to chat successfully!');
+            bootstrap.Modal.getInstance(document.getElementById('linkChatModal')).hide();
+        }
+    </script>
+
+    <!-- CLIENT VALIDATION -->
+    <script>
+        document.getElementById("editForm").addEventListener("submit", function (e) {
+
+            let valid = true;
+
+            function showError(id, msg) {
+                document.getElementById(id).innerText = msg;
+                valid = false;
+            }
+
+            function clearErrors() {
+                document.querySelectorAll(".error").forEach(el => el.innerText = "");
+            }
+
+            clearErrors();
+
+            const nameInput = document.getElementById("name");
+            const emailInput = document.getElementById("email");
+            const phoneInput = document.getElementById("phone");
+            const locationInput = document.getElementById("location");
+
+            const name = nameInput.value.trim();
+            const email = emailInput.value.trim();
+            const phone = phoneInput.value.trim();
+            const location = locationInput.value.trim();
+
+            const nameRegex = /^[A-Za-z\s]+$/;
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            const phoneRegex = /^[0-9]+$/;
+
+            if (!name) {
+                showError("nameError", "Name is required");
+            } else if (!nameRegex.test(name)) {
+                showError("nameError", "Only alphabets allowed");
+            }
+
+            if (!email) {
+                showError("emailError", "Email is required");
+            } else if (!emailRegex.test(email)) {
+                showError("emailError", "Invalid email format");
+            }
+
+            if (!phone) {
+                showError("phoneError", "Phone is required");
+            } else if (!phoneRegex.test(phone)) {
+                showError("phoneError", "Numbers only");
+            }
+
+            if (!location) {
+                showError("locationError", "Location is required");
+            }
+
+            if (!valid) {
+                e.preventDefault();
+            }
+        });
+    </script>
+    <script>
+        document.querySelector("form").addEventListener("submit", function (e) {
+
+            const first = document.getElementById("firstName").value.trim();
+            const last = document.getElementById("lastName").value.trim();
+
+            const nameRegex = /^[A-Za-z\s]+$/;
+
+            if (!first || !last) {
+                alert("First and Last name required.");
+                e.preventDefault();
+                return;
+            }
+
+            if (!nameRegex.test(first) || !nameRegex.test(last)) {
+                alert("Names must contain letters only.");
+                e.preventDefault();
+                return;
+            }
+
+            document.getElementById("fullName").value = first + " " + last;
+        });
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+
+</html>

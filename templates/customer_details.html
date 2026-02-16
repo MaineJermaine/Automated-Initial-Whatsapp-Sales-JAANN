@@ -4,94 +4,204 @@
 <head>
     <meta charset="UTF-8">
     <title>Customer Profile - {{ c.name }}</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        .info-box {
+            border: 1px solid #d6e4f3;
+            border-radius: 12px;
+            padding: 14px;
+            background: #f9fbfe;
+            font-size: 0.9rem;
+        }
+
+        .tag-pill {
+            background: #e6f0ff;
+            color: #2a6edb;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            background: #4caf50;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+    </style>
+
 </head>
 
 <body id="page-customers">
+
     <aside class="sidebar">
         <h2>CRM Admin</h2>
-        <a href="/dashboard" class="nav-link nav-dashboard active">Dashboard</a>
-        <a href="/customers" class="nav-link nav-customers">Customer List</a>
-        <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
-        <a href="/history" class="nav-link nav-history">Chat History</a>
-        <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
-        <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
+        <a href="/dashboard" class="nav-link">Dashboard</a>
+        <a href="/customers" class="nav-link active">Customer List</a>
+        <a href="/templates-manager" class="nav-link">Template Manager</a>
+        <a href="/history" class="nav-link">Chat History</a>
+        <a href="/repository" class="nav-link">Inquiry Repository</a>
+        <a href="/scoring" class="nav-link">Lead Scoring</a>
     </aside>
 
     <main class="main">
-        <div class="header mb-4">
-            <a href="/customers" class="text-decoration-none small">← Back to List</a>
-            <h1 class="h3 mt-2">{{ c.name }}</h1>
-        </div>
 
-        <div class="row g-4">
-            <div class="col-lg-4">
+        <a href="/customers" class="text-decoration-none small">← Back</a>
+
+        <div class="row g-4 mt-2">
+
+            <!-- ================= LEFT PANEL ================= -->
+            <div class="col-lg-6">
+
                 <div class="card p-4 shadow-sm border-0">
-                    <div class="avatar-circle mb-3" style="width: 80px; height: 80px; font-size: 2rem;">
-                        {{ c.name.split(' ')[0][0] }}{{ c.name.split(' ')[-1][0] if c.name.split(' ')|length > 1 else ''
-                        }}
+
+                    <div class="d-flex align-items-center mb-3">
+                        {% set parts = c.name.strip().split() %}
+
+                        <div class="avatar-circle me-3" style="width:70px;height:70px;font-size:1.8rem;">
+                            {{ parts[0][0]|upper }}
+                            {% if parts|length > 1 %}
+                            {{ parts[-1][0]|upper }}
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <h4 class="mb-1">{{ c.name }}</h4>
+
+                            <span class="badge bg-light text-dark">
+                                Assigned: {{ c.assigned_staff or "Jayden Ng" }}
+                            </span>
+
+                            <span class="ms-2 small text-success">
+                                <span class="status-dot"></span> Active lead
+                            </span>
+                        </div>
                     </div>
-                    <p><strong>Email:</strong> <br> {{ c.email }}</p>
-                    <p><strong>Phone:</strong> <br> {{ c.phone or 'N/A' }}</p>
-                    <p><strong>Location:</strong> <br> {{ c.location or 'Not Set' }}</p>
-                    <hr>
-                    <p><strong>Assigned To:</strong> <br> {{ c.assigned_staff or 'Unassigned' }}</p>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="info-box"><strong>Contact</strong><br>{{ c.phone or 'N/A' }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-box"><strong>Email</strong><br>{{ c.email }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-box"><strong>Location</strong><br>{{ c.location or 'Singapore' }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-box"><strong>Customer ID</strong><br>CUS-{{ "%06d"|format(c.id) }}</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <div class="text-muted small mb-1">Tags</div>
+
+                        {% if c.tags %}
+                        {% for tag in c.tags.split(',') %}
+                        <span class="tag" style="
+                      background: {{ tag_colors.get(tag, '#ccc') }}20;
+                      color: {{ tag_colors.get(tag, '#555') }};
+                      border: 1px solid {{ tag_colors.get(tag, '#ccc') }};
+                  ">
+                            {{ tag }}
+                        </span>
+                        {% endfor %}
+                        {% else %}
+                        <span class="text-muted small">No tags</span>
+                        {% endif %}
+                    </div>
+
+
+                    <hr class="my-4">
+
+                    <div class="info-box mb-4">
+                        <div><strong>First Contact:</strong> {{ c.last_contact or "N/A" }}</div>
+                        <div><strong>Last Updated:</strong> {{ c.updated_at or "N/A" }}</div>
+                        <div><strong>Lead Source:</strong> WhatsApp Auto-Agent</div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <a href="https://wa.me/{{ c.phone | replace(' ', '') | replace('+', '') }}" target="_blank"
+                            class="btn btn-success btn-sm">
+                            Reply on WhatsApp
+                        </a>
+                        <a href="{{ url_for('edit_customer', id=c.id) }}" class="btn btn-info btn-sm">Edit</a>
+                        <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ c.id }})">Delete</button>
+                    </div>
+
                 </div>
             </div>
 
-            <div class="col-lg-8">
-                <div class="card p-4 shadow-sm border-0 mb-4">
-                    <h5 class="fw-bold">Internal Sales Notes</h5>
-                    <textarea class="form-control mb-3" rows="5" id="customerNotes">{{ c.notes or '' }}</textarea>
-                    <button class="btn btn-blue btn-sm" onclick="saveNotes(event)" data-customer-id="{{ c.id }}">Save
-                        Notes</button>
-                </div>
+            <!-- ================= RIGHT PANEL ================= -->
+            <div class="col-lg-6">
 
-                <div class="card p-4 shadow-sm border-0">
+                <!-- Inquiry History -->
+                <div class="card p-4 shadow-sm border-0 mb-4">
                     <h5 class="fw-bold">Inquiry History</h5>
                     <p class="small text-muted">Customer has 1 active inquiry.</p>
-                    <a href="/repository?q={{ c.name }}" class="btn btn-outline-secondary btn-sm">View Linked
-                        Inquiries</a>
+                    <a href="/repository?q={{ c.name }}" class="btn btn-outline-secondary btn-sm w-100">
+                        View Linked Inquiries
+                    </a>
                 </div>
+
+                <!-- Internal Notes -->
+                <div class="card p-4 shadow-sm border-0">
+                    <h5 class="fw-bold">Internal Notes</h5>
+                    <div class="text-muted small mb-2">Visible to sales team only</div>
+
+                    <textarea class="form-control mb-3" rows="6" id="customerNotes">{{ c.notes or '' }}</textarea>
+
+                    <div class="text-end">
+                        <button class="btn btn-primary btn-sm" onclick="saveNotes(event)" data-customer-id="{{ c.id }}">
+                            Save
+                        </button>
+
+                        <button class="btn btn-secondary btn-sm"
+                            onclick="document.getElementById('customerNotes').value=''">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+
             </div>
         </div>
+
     </main>
 
     <script>
         async function saveNotes(event) {
             const notes = document.getElementById('customerNotes').value;
-            const btn = event.currentTarget || event.target;
-            const customerId = btn.getAttribute('data-customer-id');
+            const btn = event.target;
+            const id = btn.getAttribute("data-customer-id");
 
-            try {
-                const response = await fetch(`/api/customer/${customerId}/notes`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ notes: notes })
-                });
+            const res = await fetch(`/api/customer/${id}/notes`, {
+                method: "PUT",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes })
+            });
 
-                const data = await response.json();
+            if (res.ok) {
+                btn.innerText = "Saved!";
+                setTimeout(() => btn.innerText = "Save", 2000);
+            }
+        }
 
-                if (response.ok) {
-                    const originalText = btn.innerText;
-                    btn.innerText = 'Saved!';
-                    btn.classList.replace('btn-blue', 'btn-green');
-
-                    setTimeout(() => {
-                        btn.innerText = originalText;
-                        btn.classList.replace('btn-green', 'btn-blue');
-                    }, 2000);
-                } else {
-                    alert('Error saving notes: ' + (data.message || 'Unknown error'));
-                }
-            } catch (error) {
-                alert('Error saving notes: ' + error.message);
+        function confirmDelete(id) {
+            if (confirm("Delete this customer?")) {
+                fetch(`/customer/${id}/delete`, { method: "POST" })
+                    .then(() => window.location = "/customers");
             }
         }
     </script>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 
 </html>

@@ -3,21 +3,20 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer Management - Admin</title>
+    <title>Customers</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        window.backendSearchSeed = {{ search_seed | tojson }};
+    </script>
 </head>
-<script>
-    // This takes the list from Python and gives it to JavaScript
-    window.backendSearchSeed = {{ search_seed | tojson }};
-</script>
 
 <body id="page-customers">
+
     <aside class="sidebar">
         <h2>CRM Admin</h2>
-        <a href="/dashboard" class="nav-link nav-dashboard active">Dashboard</a>
-        <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
+        <a href="/customers" class="nav-link nav-customers active">Customer List</a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
@@ -25,88 +24,322 @@
     </aside>
 
     <main class="main">
-        <div class="header">
-            <div class="header-left">
-                <h1 class="h3 mb-0">Customer Management</h1>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+
+            <div>
+                <h1 class="h3 mb-0">Customers</h1>
+                <small class="text-muted">
+                    Showing {{ pagination.total }} results
+                </small>
             </div>
-            <div class="search-container">
-                <input type="text" placeholder="Search leads, rules, or customers..." class="taskbar-search">
-            </div>
-            <div class="header-right">
-                <button class="btn btn-blue" data-bs-toggle="modal" data-bs-target="#addCustomerModal">+ Add
-                    Customer</button>
+
+            <div class="d-flex gap-2 align-items-center">
+
+                <div class="search-container position-relative">
+                    <input id="taskbarSearch" class="taskbar-search" autocomplete="off"
+                        placeholder="Search leads, rules, or customers...">
+                    <div class="search-results" id="taskbarResults" role="listbox" aria-expanded="false"></div>
+                </div>
+
+                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
+                    + Add Customer
+                </button>
+
+                <a href="{{ url_for('export_customers') }}" class="btn btn-success btn-sm">
+                    Export
+                </a>
+
+                <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
+                    Filters
+                </button>
+
             </div>
         </div>
 
-        <form method="GET" action="/customers" class="mb-4">
-            <input type="text" name="q" class="form-control" placeholder="Search by name or email..."
-                value="{{ query }}">
-        </form>
+        <!-- FILTER MODAL -->
+        <div class="modal fade" id="filterModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-md">
+                <div class="modal-content">
 
-        <div class="row g-4">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Filter Customers</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+
+                    <div class="modal-body">
+
+                        <label class="fw-bold mb-2">Filter by Tags</label>
+
+                        <div class="filter-tags-container">
+                            {% for tag, color in tags_inventory.items() %}
+                            <label class="filter-pill" style="border:1px solid;">
+                                <input type="checkbox" name="filterTags" value="{{ tag }}" {% if tag in selected_tags
+                                    %}checked{% endif %}>
+                                {{ tag }}
+                            </label>
+                            {% endfor %}
+                        </div>
+
+                        <hr class="my-3">
+
+                        <label class="fw-bold">Last Contact Date</label>
+                        <input type="date" class="form-control" id="filterLastContact"
+                            value="{{ last_contact_filter or '' }}">
+
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-gray" onclick="clearFilters()">Clear</button>
+                        <button type="button" class="btn btn-blue" onclick="applyFilters()">Apply Filters</button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- CUSTOMER CARDS -->
+        <div class="customer-grid">
             {% for c in customers %}
-            <div class="col-12 col-md-6 col-lg-4">
-                <div class="card p-3 shadow-sm border-0 h-100">
-                    <div class="d-flex align-items-center mb-3">
-                        <div class="avatar-circle me-3">
-                            {{ c.name.split(' ')[0][0] }}{{ c.name.split(' ')[-1][0] if c.name.split(' ')|length > 1
-                            else '' }}
+            <a href="{{ url_for('customer_profile', id=c.id) }}" class="card-link">
+                <div class="customer-card">
+                    <div class="customer-left">
+                        {% set parts = c.name.strip().split() %}
+                        <div class="avatar-circle">
+                            {{ parts[0][0]|upper }}{% if parts|length > 1 %}{{ parts[-1][0]|upper }}{% endif %}
                         </div>
-                        <div>
-                            <h5 class="mb-0 fw-bold">{{ c.name }}</h5>
-                            <small class="text-muted">{{ c.email }}</small>
+
+                        <div class="customer-info">
+                            <div class="customer-name">{{ c.name }}</div>
+                            <div class="customer-id">C{{ "%03d"|format(c.id) }}</div>
+                            <div class="customer-last">Last: {{ c.last_contact or "—" }}</div>
                         </div>
                     </div>
-                    <div class="mb-3 small">
-                        <p class="mb-1 text-secondary"><strong>Phone:</strong> {{ c.phone }}</p>
-                        <p class="mb-1 text-secondary"><strong>Staff:</strong> {{ c.assigned_staff or 'Unassigned' }}
-                        </p>
-                    </div>
-                    <div class="mb-3">
+
+                    <div class="customer-tag">
                         {% if c.tags %}
-                        {% for tag in c.tags.split(',') %}
-                        <span class="badge bg-info-subtle text-primary small">{{ tag }}</span>
-                        {% endfor %}
+                        {% set tag_list = c.tags.split(',') | map('trim') | reject('equalto','') | list %}
+                        {% if tag_list %}
+                        {% set first_tag = tag_list[0] %}
+                        <span class="tag" style="background: {{ tag_colors.get(first_tag, '#ccc') }}20;
+                             color: {{ tag_colors.get(first_tag, '#555') }};
+                             border: 1px solid {{ tag_colors.get(first_tag, '#ccc') }};">
+                            {{ first_tag }}
+                        </span>
+                        {% endif %}
                         {% endif %}
                     </div>
-                    <div class="mt-auto d-flex gap-2">
-                        <a href="/customer/{{ c.id }}" class="btn btn-blue btn-sm w-100">View Profile</a>
-                    </div>
                 </div>
-            </div>
-            {% else %}
-            <div class="col-12 text-center py-5">
-                <p class="text-muted">No customers found. Try adding a new one!</p>
-            </div>
+            </a>
             {% endfor %}
         </div>
+
+        <!-- PAGINATION -->
+        {% if pagination.pages > 1 %}
+        <div class="pagination-wrapper">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('customers', page=pagination.prev_num) }}" class="page-btn">« Prev</a>
+            {% endif %}
+
+            {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if page_num %}
+            {% if page_num == pagination.page %}
+            <span class="page-btn active">{{ page_num }}</span>
+            {% else %}
+            <a href="{{ url_for('customers', page=page_num) }}" class="page-btn">{{ page_num }}</a>
+            {% endif %}
+            {% else %}
+            <span class="page-dots">…</span>
+            {% endif %}
+            {% endfor %}
+
+            {% if pagination.has_next %}
+            <a href="{{ url_for('customers', page=pagination.next_num) }}" class="page-btn">Next »</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- DIRECTORY TABLE -->
+        <h3 class="section-title">Customer Directory</h3>
+
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Tags</th>
+                        <th>Last Contact</th>
+                        <th></th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for c in all_customers %}
+                    <tr>
+                        <td>C{{ "%03d"|format(c.id) }}</td>
+                        <td>{{ c.name }}</td>
+                        <td>{{ c.email }}</td>
+                        <td>{{ c.phone }}</td>
+
+                        <td>
+                            {% if c.tags %}
+                            {% for tag in c.tags.split(',') %}
+                            <span class="tag" style="background: {{ tag_colors.get(tag, '#ccc') }}20;
+               color: {{ tag_colors.get(tag, '#555') }};
+               border:1px solid {{ tag_colors.get(tag, '#ccc') }};">
+                                {{ tag }}
+                            </span>
+                            {% endfor %}
+                            {% endif %}
+                        </td>
+
+                        <td>{{ c.last_contact or "—" }}</td>
+
+                        <td>
+                            <a href="/customer/{{ c.id }}/edit" class="btn btn-blue btn-sm">Edit</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
     </main>
 
-    <div class="modal fade" id="addCustomerModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content p-3">
-                <h3 class="h5 mb-3 border-bottom pb-2">Add New Customer</h3>
+    <!-- ADD CUSTOMER MODAL -->
+    <div class="modal fade" id="addCustomerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-md">
+            <div class="modal-content">
 
-                <div class="mb-3">
-                    <label class="form-label">Name</label>
-                    <input type="text" id="newCustName" class="form-control" placeholder="Enter name">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Email</label>
-                    <input type="email" id="newCustEmail" class="form-control" placeholder="example@mail.com">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Phone</label>
-                    <input type="text" id="newCustPhone" class="form-control" placeholder="+65...">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New Customer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
 
-                <div class="d-flex gap-2">
-                    <button class="btn btn-blue w-100" onclick="saveCustomer()">Save</button>
-                    <button class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+                <div class="modal-body">
+                    <div class="form-group mb-3">
+                        <label for="custFirst">First Name *</label>
+                        <input type="text" class="form-control form-control-sm" id="custFirst" required
+                            pattern="^[A-Za-z\s'\-]+$" title="Letters, spaces, hyphens and apostrophes only.">
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="custLast">Last Name *</label>
+                        <input type="text" class="form-control form-control-sm" id="custLast" required
+                            pattern="^[A-Za-z\s'\-]+$" title="Letters, spaces, hyphens and apostrophes only.">
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="custEmail">Email *</label>
+                        <input type="email" class="form-control form-control-sm" id="custEmail" required>
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label for="custPhone">Phone</label>
+                        <input type="tel" class="form-control form-control-sm" id="custPhone"
+                            pattern="^[0-9\+\-\s\(\)]{6,20}$" title="6-20 characters; numbers and + - ( ) allowed.">
+                    </div>
+
+                    <div id="addCustError" class="text-danger small" role="alert" aria-live="polite"></div>
                 </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="createCustBtn" class="btn btn-blue">Create</button>
+                </div>
+
             </div>
         </div>
     </div>
+
+    <!-- SCRIPTS -->
+    <script>
+        /* Filters helpers */
+        function applyFilters() {
+            const checked = document.querySelectorAll("input[name='filterTags']:checked");
+            const date = document.getElementById("filterLastContact").value;
+            let params = new URLSearchParams();
+            checked.forEach(cb => params.append("tags", cb.value));
+            if (date) params.append("last_contact", date);
+            window.location.href = "/customers?" + params.toString();
+        }
+        function clearFilters() { window.location.href = "/customers"; }
+    </script>
+
+    <script>
+        /* Create customer: client validation + server-side error handling */
+        document.getElementById('createCustBtn').addEventListener('click', createCustomer);
+
+        async function createCustomer() {
+            const first = document.getElementById("custFirst").value.trim();
+            const last = document.getElementById("custLast").value.trim();
+            const email = document.getElementById("custEmail").value.trim();
+            const phone = document.getElementById("custPhone").value.trim();
+            const errorBox = document.getElementById("addCustError");
+            const btn = document.getElementById("createCustBtn");
+
+            errorBox.textContent = "";
+
+            const nameRegex = /^[A-Za-z\s'\-]+$/;
+            const emailRegex = /^[^@]+@[^@]+\.[^@]+$/;
+            const phoneRegex = /^[0-9\+\-\s\(\)]{6,20}$/;
+
+            const errs = [];
+            if (!first) errs.push("First name is required.");
+            else if (!nameRegex.test(first)) errs.push("Invalid first name.");
+
+            if (!last) errs.push("Last name is required.");
+            else if (!nameRegex.test(last)) errs.push("Invalid last name.");
+
+            if (!email) errs.push("Email is required.");
+            else if (!emailRegex.test(email)) errs.push("Invalid email format.");
+
+            if (phone && !phoneRegex.test(phone)) errs.push("Invalid phone format.");
+
+            if (errs.length) {
+                errorBox.textContent = errs.join(' ');
+                return;
+            }
+
+            const payload = { name: first + ' ' + last, email, phone };
+
+            btn.disabled = true;
+            const prevText = btn.textContent;
+            btn.textContent = 'Creating...';
+
+            try {
+                const res = await fetch("/api/customer/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    const messages = data.errors ? data.errors.join(' ') : (data.error || 'Failed to create customer.');
+                    errorBox.textContent = messages;
+                    btn.disabled = false;
+                    btn.textContent = prevText;
+                    return;
+                }
+
+                const modalEl = document.getElementById('addCustomerModal');
+                const bsModal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                bsModal.hide();
+
+                // reload to show new customer
+                location.reload();
+            } catch (err) {
+                errorBox.textContent = "Network error. Try again.";
+                btn.disabled = false;
+                btn.textContent = prevText;
+            }
+        }
+    </script>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

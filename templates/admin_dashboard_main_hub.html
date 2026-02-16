@@ -32,7 +32,7 @@
             <div class="header-left">
                 <h1 style="margin:0; font-size: 24px;">Admin Dashboard</h1>
                 <button class="btn btn-gray" data-bs-toggle="modal" data-bs-target="#customizeModal"
-                    style="font-size: 12px;">⚙️ Customize Stats</button>
+                    style="font-size: 12px;" onclick="openCustomizeModal()">⚙️ Customize Stats</button>
             </div>
             <div class="search-container">
                 <input type="text" placeholder="Search leads, rules, or customers..." class="taskbar-search">
@@ -40,53 +40,171 @@
             <div class="header-right"></div>
         </div>
 
-        <div class="row g-4 mb-4" id="metricsContainer">
-            <div class="col-12 col-sm-6 col-xl-3">
-                <div class="card" id="slot-0"></div>
-            </div>
-            <div class="col-12 col-sm-6 col-xl-3">
-                <div class="card" id="slot-1"></div>
-            </div>
-            <div class="col-12 col-sm-6 col-xl-3">
-                <div class="card" id="slot-2"></div>
-            </div>
-            <div class="col-12 col-sm-6 col-xl-3">
-                <div class="card" id="slot-3"></div>
+        <!-- ===== DYNAMIC SOLID STATS ROW ===== -->
+        <div class="row g-3 mb-4" id="statsRow">
+            <div class="col-12 text-center py-4" id="statsLoading">
+                <span style="color:var(--gray); font-size:0.9rem;">Loading stats…</span>
             </div>
         </div>
 
-        <div class="card mb-4" style="padding: 25px;">
-            <h3 style="margin-top:0; color: var(--slate-900); font-size: 1.1rem;">Highest Leads (Past 7 Days)</h3>
-            <div style="height: 250px;">
-                <canvas id="leadsChart"></canvas>
+        <!-- ===== DYNAMIC GRAPHS SECTION ===== -->
+        <div class="row g-4 mb-4" id="graphsRow"></div>
+
+        <!-- ========== ANNOUNCEMENTS CRUD SECTION ========== -->
+        <div class="card mb-4 announcement-section" style="padding: 25px;">
+            <div class="announcement-header">
+                <h3 style="margin:0; font-size: 1.1rem; color: var(--slate-900);">📢 Announcements</h3>
+                <button class="btn btn-blue" id="btnNewAnnouncement" onclick="openAnnouncementModal()">
+                    + New Announcement
+                </button>
+            </div>
+            <p style="color: var(--gray); font-size: 0.85rem; margin-bottom: 20px;">
+                Create, view, edit, and delete team announcements from this panel.
+            </p>
+            <div id="announcementsContainer">
+                {% if all_announcements %}
+                {% for a in all_announcements %}
+                <div class="announcement-card" id="announcement-{{ a.id }}" data-id="{{ a.id }}">
+                    <div class="announcement-card-left">
+                        <span class="announcement-priority-badge priority-{{ a.priority }}">{{ a.priority | upper
+                            }}</span>
+                        <div class="announcement-card-body">
+                            <strong class="announcement-title">{{ a.title }}</strong>
+                            <p class="announcement-content">{{ a.content }}</p>
+                            <small class="announcement-date">{{ a.created_at or 'N/A' }}</small>
+                        </div>
+                    </div>
+                    <div class="announcement-card-actions">
+                        <button class="btn btn-sm btn-gray" title="Edit"
+                            onclick="editAnnouncement({{ a.id }}, '{{ a.title | e }}', `{{ a.content | e }}`, '{{ a.priority }}')">✏️</button>
+                        <button class="btn btn-sm btn-red" title="Delete"
+                            onclick="confirmDeleteAnnouncement({{ a.id }})">🗑️</button>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="announcement-empty" id="announcementEmpty">
+                    <p style="text-align:center; color: var(--gray); padding: 30px 0;">No announcements yet. Click
+                        <strong>+ New Announcement</strong> to create one.
+                    </p>
+                </div>
+                {% endif %}
             </div>
         </div>
+        <!-- ========== END ANNOUNCEMENTS SECTION ========== -->
 
         <div class="row g-4">
             <div class="col-12 col-lg-7">
                 <div class="card h-100">
                     <h3 style="margin-bottom: 20px; font-size: 1.1rem;">🔥 High-Value Leads (Top 3)</h3>
-                    <div id="highValueLeadsContainer"></div>
+                    <div id="highValueLeadsContainer">
+                        {% if high_value_leads %}
+                        <div class="list-group list-group-flush">
+                            {% for lead in high_value_leads %}
+                            <div
+                                class="list-group-item px-0 py-3 d-flex align-items-center justify-content-between border-bottom">
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar-circle me-3 bg-light text-primary"
+                                        style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">
+                                        {{ lead.visitor_name[0] | upper }}
+                                    </div>
+                                    <div>
+                                        <h6 class="mb-0 text-dark" style="font-weight:600;">{{ lead.visitor_name }}</h6>
+                                        <small class="text-muted" style="font-size:0.85rem;">{{ lead.visitor_email or
+                                            'No email' }}</small>
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-primary rounded-pill px-3 py-2" style="font-size:0.85rem;">
+                                        Score: {{ lead.calculated_score | int }}
+                                    </span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4">
+                            <p class="text-muted mb-0">No leads scored yet.</p>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
 
             <div class="col-12 col-lg-5">
                 <div class="card h-100">
                     <h3 style="margin-bottom: 20px; font-size: 1.1rem;">💬 Latest Customer Chats</h3>
-                    <div id="latestChatsContainer"></div>
+                    <div id="latestChatsContainer">
+                        {% if latest_chats %}
+                        <div class="list-group list-group-flush">
+                            {% for chat in latest_chats %}
+                            <a href="/history?session={{ chat.id }}"
+                                class="list-group-item list-group-item-action px-0 py-3 border-bottom">
+                                <div class="d-flex w-100 justify-content-between mb-1">
+                                    <h6 class="mb-0 fw-bold text-dark">{{ chat.visitor_name }}</h6>
+                                    <small class="text-muted">{{ chat.updated_at.split(' ')[1] if chat.updated_at and '
+                                        ' in chat.updated_at else chat.updated_at }}</small>
+                                </div>
+                                <p class="mb-0 small text-muted text-truncate" style="max-width: 90%;">
+                                    {% if chat.chat_messages %}
+                                    {{ chat.chat_messages[-1].text }}
+                                    {% else %}
+                                    <em>No messages yet</em>
+                                    {% endif %}
+                                </p>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4">
+                            <p class="text-muted mb-0">No recent chats found.</p>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
     </main>
 
+    <!-- ===== CUSTOMIZE DASHBOARD MODAL ===== -->
     <div class="modal fade" id="customizeModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold">Customize Dashboard</h5>
+                    <h5 class="modal-title fw-bold">⚙️ Customize Dashboard</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body" id="configForm">
+                <div class="modal-body">
+                    <p style="color: var(--gray); font-size: 0.85rem; margin-bottom: 16px;">Choose which stats and
+                        graphs to display on your dashboard. Your preferences are saved locally.</p>
+
+                    <!-- Tab Navigation -->
+                    <ul class="nav nav-tabs customize-tabs mb-3" id="customizeTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="stats-tab" data-bs-toggle="tab"
+                                data-bs-target="#statsPane" type="button" role="tab">📊 Solid Stats</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="graphs-tab" data-bs-toggle="tab" data-bs-target="#graphsPane"
+                                type="button" role="tab">📈 Graphs</button>
+                        </li>
+                    </ul>
+
+                    <!-- Tab Content -->
+                    <div class="tab-content" id="customizeTabContent">
+                        <!-- Solid Stats Pane -->
+                        <div class="tab-pane fade show active" id="statsPane" role="tabpanel">
+                            <div class="customize-grid" id="customizeStatsList">
+                                <!-- dynamically populated -->
+                            </div>
+                        </div>
+                        <!-- Graphs Pane -->
+                        <div class="tab-pane fade" id="graphsPane" role="tabpanel">
+                            <div class="customize-grid" id="customizeGraphsList">
+                                <!-- dynamically populated -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-blue w-100" onclick="saveDashboardConfig()">Save
@@ -97,9 +215,186 @@
         </div>
     </div>
 
+    <!-- Announcement Create / Edit Modal -->
+    <div class="modal fade" id="announcementModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold" id="announcementModalTitle">New Announcement</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="annEditId" value="">
+                    <div class="form-group">
+                        <label for="annTitle">Title</label>
+                        <input type="text" id="annTitle" placeholder="e.g. System Maintenance Notice"
+                            class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="annContent">Content</label>
+                        <textarea id="annContent" rows="4" placeholder="Write your announcement here..."
+                            class="form-control"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="annPriority">Priority</label>
+                        <select id="annPriority" class="form-select">
+                            <option value="low">Low</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-blue w-100" id="btnSaveAnnouncement"
+                        onclick="saveAnnouncement()">Create Announcement</button>
+                    <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold" style="color: var(--red);">⚠️ Confirm Delete</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p style="font-size: 0.9rem; color: var(--gray);">Are you sure you want to delete this announcement?
+                        This action cannot be undone.</p>
+                    <input type="hidden" id="deleteTargetId" value="">
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-red w-100" onclick="deleteAnnouncement()">Yes, Delete</button>
+                    <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+
+    <script>
+        /* ==========================================================================
+           ANNOUNCEMENTS CRUD – Dashboard Inline Script
+           ========================================================================== */
+
+        // --- CREATE / UPDATE ---
+        function openAnnouncementModal(editId, title, content, priority) {
+            document.getElementById('annEditId').value = editId || '';
+            document.getElementById('annTitle').value = title || '';
+            document.getElementById('annContent').value = content || '';
+            document.getElementById('annPriority').value = priority || 'normal';
+
+            const modalTitle = document.getElementById('announcementModalTitle');
+            const saveBtn = document.getElementById('btnSaveAnnouncement');
+
+            if (editId) {
+                modalTitle.textContent = 'Edit Announcement';
+                saveBtn.textContent = 'Save Changes';
+            } else {
+                modalTitle.textContent = 'New Announcement';
+                saveBtn.textContent = 'Create Announcement';
+            }
+
+            const modal = new bootstrap.Modal(document.getElementById('announcementModal'));
+            modal.show();
+        }
+
+        // Alias for inline onclick in cards
+        function editAnnouncement(id, title, content, priority) {
+            openAnnouncementModal(id, title, content, priority);
+        }
+
+        async function saveAnnouncement() {
+            const id = document.getElementById('annEditId').value;
+            const title = document.getElementById('annTitle').value.trim();
+            const content = document.getElementById('annContent').value.trim();
+            const priority = document.getElementById('annPriority').value;
+
+            if (!title || !content) {
+                alert('Title and Content are required!');
+                return;
+            }
+
+            const payload = { title, content, priority };
+
+            try {
+                let res;
+                if (id) {
+                    // UPDATE (PUT)
+                    res = await fetch(`/api/announcements/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    // CREATE (POST)
+                    res = await fetch('/api/announcements', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
+
+                if (res.ok) {
+                    // Close modal and refresh page to show new/updated data
+                    bootstrap.Modal.getInstance(document.getElementById('announcementModal')).hide();
+                    window.location.reload();
+                } else {
+                    const err = await res.json();
+                    alert('Error: ' + (err.error || 'Could not save announcement'));
+                }
+            } catch (e) {
+                console.error('Save announcement error:', e);
+                alert('Network error. Please try again.');
+            }
+        }
+
+        // --- DELETE ---
+        function confirmDeleteAnnouncement(id) {
+            document.getElementById('deleteTargetId').value = id;
+            const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+            modal.show();
+        }
+
+        async function deleteAnnouncement() {
+            const id = document.getElementById('deleteTargetId').value;
+            if (!id) return;
+
+            try {
+                const res = await fetch(`/api/announcements/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
+                    // Remove card from DOM with animation
+                    const card = document.getElementById(`announcement-${id}`);
+                    if (card) {
+                        card.style.transition = 'opacity 0.3s, transform 0.3s';
+                        card.style.opacity = '0';
+                        card.style.transform = 'translateX(30px)';
+                        setTimeout(() => {
+                            card.remove();
+                            // Show empty state if no more announcements
+                            const container = document.getElementById('announcementsContainer');
+                            if (container && container.querySelectorAll('.announcement-card').length === 0) {
+                                container.innerHTML = '<div class="announcement-empty" id="announcementEmpty"><p style="text-align:center; color: var(--gray); padding: 30px 0;">No announcements yet. Click <strong>+ New Announcement</strong> to create one.</p></div>';
+                            }
+                        }, 300);
+                    }
+                } else {
+                    alert('Error deleting announcement.');
+                }
+            } catch (e) {
+                console.error('Delete announcement error:', e);
+                alert('Network error. Please try again.');
+            }
+        }
+    </script>
 </body>
 
 </html>
