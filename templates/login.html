@@ -8,21 +8,123 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
-            background: #f1f5f9;
+            background-color: #0f172a;
+            color: #fff;
             display: flex;
             align-items: center;
             justify-content: center;
             height: 100vh;
             font-family: 'Inter', sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .grid-bg {
+            background-image:
+                linear-gradient(rgba(0, 255, 136, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 136, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 0.8;
+            }
+        }
+
+        .animate-pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        /* Utility classes for background elements */
+        .fixed {
+            position: fixed;
+        }
+
+        .inset-0 {
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+        }
+
+        .pointer-events-none {
+            pointer-events: none;
+        }
+
+        .overflow-hidden {
+            overflow: hidden;
+        }
+
+        .absolute {
+            position: absolute;
+        }
+
+        .top-20 {
+            top: 10%;
+        }
+
+        .left-10 {
+            left: 10%;
+        }
+
+        .bottom-40 {
+            bottom: 20%;
+        }
+
+        .right-20 {
+            right: 10%;
+        }
+
+        .w-64 {
+            width: 16rem;
+        }
+
+        .h-64 {
+            height: 16rem;
+        }
+
+        .w-96 {
+            width: 24rem;
+        }
+
+        .h-96 {
+            height: 24rem;
+        }
+
+        .rounded-full {
+            border-radius: 9999px;
+        }
+
+        .blur-3xl {
+            filter: blur(64px);
+        }
+
+        .bg-emerald-500-10 {
+            background-color: rgba(16, 185, 129, 0.15);
+        }
+
+        .bg-cyan-500-10 {
+            background-color: rgba(6, 182, 212, 0.15);
         }
 
         .login-card {
-            background: white;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             width: 100%;
             max-width: 400px;
+            position: relative;
+            z-index: 10;
         }
 
         .login-header {
@@ -32,57 +134,81 @@
 
         .login-header h2 {
             font-weight: 700;
-            color: #0f172a;
+            color: #fff;
             margin-bottom: 10px;
         }
 
+        .login-header p {
+            color: #94a3b8 !important;
+        }
+
         .btn-primary {
-            background-color: #3b82f6;
+            background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);
             border: none;
             padding: 12px;
             font-weight: 600;
             font-size: 1rem;
-            transition: 0.2s;
+            transition: 0.3s;
+            box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.5);
         }
 
         .btn-primary:hover {
-            background-color: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.6);
         }
 
         .form-control {
-            padding: 10px 15px;
-            border-color: #e2e8f0;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 12px 15px;
         }
 
         .form-control:focus {
+            background: rgba(15, 23, 42, 0.8);
             border-color: #3b82f6;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+            color: #fff;
+        }
+
+        .form-label {
+            color: #cbd5e1 !important;
+            letter-spacing: 0.05em;
         }
     </style>
 </head>
 
-<body>
+<body class="grid-bg">
+    <!-- Background Glow Effects -->
+    <div class="fixed inset-0 pointer-events-none overflow-hidden">
+        <div class="absolute top-20 left-10 w-64 h-64 bg-emerald-500-10 rounded-full blur-3xl animate-pulse-glow"></div>
+        <div class="absolute bottom-40 right-20 w-96 h-96 bg-cyan-500-10 rounded-full blur-3xl animate-pulse-glow">
+        </div>
+    </div>
+
     <div class="login-card">
         <div class="login-header">
             <h2>CRM Admin</h2>
             <p class="text-muted small">Enter your credentials to access the dashboard</p>
         </div>
         {% if error %}
-        <div class="alert alert-danger text-center p-2 mb-3 small">{{ error }}</div>
+        <div class="alert alert-danger text-center p-2 mb-3 small"
+            style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5;">{{
+            error }}</div>
         {% endif %}
         <form method="POST" action="/login">
             <div class="mb-3">
-                <label class="form-label fw-bold small text-secondary">USERNAME</label>
+                <label class="form-label fw-bold small">USERNAME</label>
                 <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus>
             </div>
             <div class="mb-4">
-                <label class="form-label fw-bold small text-secondary">PASSWORD</label>
+                <label class="form-label fw-bold small">PASSWORD</label>
                 <input type="password" name="password" class="form-control" placeholder="••••••••" required>
             </div>
             <button type="submit" class="btn btn-primary w-100">Sign In</button>
         </form>
         <div class="text-center mt-4">
-            <small class="text-muted">© 2026 CRM Admin Panel</small>
+            <small style="color: #64748b;">© 2026 CRM Admin Panel</small>
         </div>
     </div>
 </body>
