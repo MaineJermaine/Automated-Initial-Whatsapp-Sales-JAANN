@@ -48,6 +48,7 @@
             </div>
             <div class="d-flex gap-2 align-items-center">
                 <span class="badge bg-primary fs-6">{{ inquiry.status }}</span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="openEditInquiryModal()">✏️ Edit</button>
                 <button class="btn btn-sm btn-blue" onclick="openLinkChatModal()">💬 Link to Chat</button>
             </div>
         </div>
@@ -84,6 +85,50 @@
             </div>
         </div>
     </main>
+
+    <!-- EDIT INQUIRY MODAL -->
+    <div class="modal fade" id="editInquiryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">Edit Inquiry</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">Status</label>
+                        <select id="editStatus" class="form-select">
+                            <option value="New">New</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Resolved">Resolved</option>
+                            <option value="Urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">Assigned Rep</label>
+                        <select id="editRep" class="form-select">
+                            <option value="Karine">Karine</option>
+                            <option value="Winter">Winter</option>
+                            <option value="Giselle">Giselle</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">Description</label>
+                        <textarea id="editDescription" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">Notes</label>
+                        <textarea id="editNotes" class="form-control" rows="2"
+                            placeholder="Internal notes..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-blue" onclick="saveInquiryChanges()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- LINK TO CHAT MODAL -->
     <div class="modal fade" id="linkChatModal" tabindex="-1" aria-hidden="true">
@@ -155,6 +200,44 @@
 
             alert('Inquiry linked to chat successfully!');
             bootstrap.Modal.getInstance(document.getElementById('linkChatModal')).hide();
+        }
+    </script>
+
+    <script>
+        function openEditInquiryModal() {
+            // Pre-fill values
+            document.getElementById('editStatus').value = "{{ inquiry.status }}";
+            document.getElementById('editRep').value = "{{ inquiry.assigned_rep }}";
+            document.getElementById('editDescription').value = `{{ inquiry.description or '' }}`;
+            document.getElementById('editNotes').value = `{{ inquiry.notes or '' }}`;
+
+            new bootstrap.Modal(document.getElementById('editInquiryModal')).show();
+        }
+
+        async function saveInquiryChanges() {
+            const payload = {
+                status: document.getElementById('editStatus').value,
+                assigned_rep: document.getElementById('editRep').value,
+                description: document.getElementById('editDescription').value,
+                notes: document.getElementById('editNotes').value
+            };
+
+            try {
+                const res = await fetch(`/api/inquiry/${inquiryId}/update`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    alert("Failed to update inquiry.");
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Error saving inquiry.");
+            }
         }
     </script>
 

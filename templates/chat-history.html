@@ -325,7 +325,8 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: white;
+            background: #eff6ff;
+            /* Light blue background */
         }
 
         .chat-header-bar {
@@ -462,34 +463,91 @@
             font-weight: 700;
         }
 
-        /* --- Message delete button --- */
-        .msg-delete-btn {
+        /* --- Message Actions --- */
+        .msg-actions {
             position: absolute;
-            top: 4px;
+            top: -55px;
+            /* Adjusted for 50px height + gap */
+            display: flex;
+            gap: 6px;
             opacity: 0;
-            transition: opacity 0.15s;
-            background: rgba(239, 68, 68, 0.9);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.65rem;
-            padding: 2px 7px;
+            transition: opacity 0.2s;
+            z-index: 10;
+            padding-bottom: 15px;
+            /* Extend invisible hit area to connect with bubble */
+            pointer-events: none;
+        }
+
+        .chat-bubble:hover .msg-actions,
+        .msg-actions:hover {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Agent (Right aligned) -> Actions on Left */
+        .bubble-agent .msg-actions {
+            left: 0;
+            flex-direction: row;
+            transform: none;
+            /* Actually, if it's agent (right side), maybe we want actions on top-left aligned? */
+            /* Previous logic: left: -10px; transform: translateX(-100%); meant LEFT of the bubble. */
+            /* User complained about disappearing. keeping it above is safer. */
+            /* Let's align to the inner edge relative to screen side? */
+            /* Agent bubble is on Right. Actions on Top-Left of bubble looks good. */
+            left: 0;
+        }
+
+        /* Bot/Customer (Left aligned) -> Actions on Right side of top? */
+        .bubble-bot .msg-actions,
+        .bubble-customer .msg-actions {
+            right: 0;
+            /* Actions on Top-Right of bubble */
+        }
+
+        .msg-action-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #fef08a;
+            /* Yellow background for the circle */
+            border: 1px solid #e2e8f0;
+            color: #475569;
+            /* Standard gray for the icon symbol */
+            display: flex;
+            align-items: center;
+            justify-content: center;
             cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-size: 1.1rem;
+            /* Standard visual size for the symbol */
+            transition: 0.2s;
+            padding: 0;
         }
 
-        .msg-delete-btn:hover {
-            background: #dc2626;
+        .msg-action-btn:hover {
+            transform: scale(1.1);
+            z-index: 2;
+            background: #fde047;
+            /* Darker yellow on hover */
+            color: #1e293b;
+            /* Darker gray icon on hover */
         }
 
-        .bubble-customer .msg-delete-btn,
-        .bubble-bot .msg-delete-btn {
-            right: -4px;
-            top: -8px;
+        /* Specific hover colors if needed, but keeping yellow theme dominant as requested */
+        .msg-action-btn.delete:hover {
+            /* If user strictly wants yellow circle, we might not want to switch to red background? */
+            /* But delete usually is red. I'll maintain the yellow theme for consistency with 'yellow' request, */
+            /* or maybe add a red/blue border/text hint? */
+            /* User said "make the icons... yellow". I'll stick to yellow background. */
+            color: #dc2626;
+            /* Turn icon red */
+            border-color: #fca5a5;
         }
 
-        .bubble-agent .msg-delete-btn {
-            left: -4px;
-            top: -8px;
+        .msg-action-btn.edit:hover {
+            color: #2563eb;
+            /* Turn icon blue */
+            border-color: #93c5fd;
         }
 
         /* --- Input Area --- */
@@ -691,6 +749,49 @@
             display: flex;
             gap: 10px;
             justify-content: center;
+        }
+
+        /* Message action buttons */
+        .chat-bubble {
+            position: relative;
+            /* Needed for absolute positioning of actions */
+        }
+
+        .msg-actions {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .chat-bubble:hover .msg-actions {
+            opacity: 1;
+        }
+
+        .msg-action-btn {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 0.8em;
+            cursor: pointer;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+            padding: 0;
+        }
+
+        .msg-action-btn.delete:hover {
+            color: #dc2626;
+        }
+
+        .msg-action-btn.edit:hover {
+            color: #2563eb;
         }
     </style>
 </head>
@@ -1301,14 +1402,25 @@
 
                 if (hasMatch) div.classList.add('bubble-keyword-match');
 
-                // Delete button for agent and customer messages
-                let deleteBtn = '';
-                if (msg.sender_type === 'agent' || msg.sender_type === 'customer') {
-                    deleteBtn = `<button class="msg-delete-btn" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>`;
+                // Edit & Delete buttons container
+                let actionBtns = '';
+                if (msg.sender_type === 'agent' || msg.sender_type === 'bot') {
+                    actionBtns = `
+                        <div class="msg-actions">
+                            <button class="msg-action-btn edit" onclick="editMessage(${msg.id}, this)" title="Edit message">✎</button>
+                            <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>
+                        </div>
+                     `;
+                } else if (msg.sender_type === 'customer') {
+                    actionBtns = `
+                        <div class="msg-actions">
+                            <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>
+                        </div>
+                     `;
                 }
 
                 div.innerHTML = `
-                    ${deleteBtn}
+                    ${actionBtns}
                     <div>${textHtml}</div>
                     ${msg.sender_type !== 'system' ? `<div class="bubble-time">${msg.timestamp || ''}</div>` : ''}
                 `;
@@ -1397,7 +1509,9 @@
                 div.className = 'chat-bubble bubble-agent';
                 div.dataset.msgId = data.message.id;
                 div.innerHTML = `
-                    <button class="msg-delete-btn" onclick="deleteMessage(${data.message.id}, this)" title="Delete message">✕</button>
+                    <div class="msg-actions">
+                        <button class="msg-action-btn delete" onclick="deleteMessage(${data.message.id}, this)" title="Delete message">✕</button>
+                    </div>
                     <div>${escapeHtml(data.message.text)}</div>
                     <div class="bubble-time">${data.message.timestamp}</div>
                 `;
@@ -1618,6 +1732,98 @@
         }
 
         // ===== SEARCH/FILTER =====
+        // ===== EDIT MESSAGE =====
+        function editMessage(msgId, btn) {
+            const bubble = btn.closest('.chat-bubble');
+            // Select the div that is NOT one of the UI controls
+            const textDiv = Array.from(bubble.children).find(el =>
+                el.tagName === 'DIV' &&
+                !el.classList.contains('bubble-time') &&
+                !el.classList.contains('edit-container') &&
+                !el.classList.contains('msg-actions')
+            );
+
+            if (!textDiv) return;
+
+            const currentText = textDiv.innerText;
+            const editContainer = document.createElement('div');
+            editContainer.className = 'edit-container';
+            editContainer.innerHTML = `
+                <textarea class="form-control form-control-sm mb-1" rows="2" style="font-size:0.9em;">${currentText}</textarea>
+                <div class="d-flex justify-content-end gap-1">
+                    <button class="btn btn-sm btn-gray py-0 px-2" style="font-size:0.75rem" onclick="cancelEdit(this)">Cancel</button>
+                    <button class="btn btn-sm btn-blue py-0 px-2" style="font-size:0.75rem" onclick="saveMessageEdit(${msgId}, this)">Save</button>
+                </div>
+            `;
+
+            textDiv.style.display = 'none';
+            textDiv.insertAdjacentElement('afterend', editContainer);
+
+            // Store original text
+            editContainer.dataset.original = currentText;
+
+            // Hide buttons
+            const actions = bubble.querySelector('.msg-actions');
+            if (actions) actions.style.display = 'none';
+        }
+
+        function cancelEdit(btn) {
+            const container = btn.closest('.edit-container');
+            const bubble = container.closest('.chat-bubble');
+            const textDiv = Array.from(bubble.children).find(el =>
+                el.tagName === 'DIV' &&
+                !el.classList.contains('bubble-time') &&
+                !el.classList.contains('edit-container') &&
+                !el.classList.contains('msg-actions')
+            );
+
+            if (textDiv) textDiv.style.display = '';
+            container.remove();
+
+            const actions = bubble.querySelector('.msg-actions');
+            if (actions) actions.style.display = '';
+        }
+
+        async function saveMessageEdit(msgId, btn) {
+            const container = btn.closest('.edit-container');
+            const textarea = container.querySelector('textarea');
+            const newText = textarea.value.trim();
+
+            if (!newText) {
+                alert("Message cannot be empty.");
+                return;
+            }
+
+            const res = await fetch(`/api/chat/message/${msgId}/edit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: newText })
+            });
+            const data = await res.json();
+
+            if (data.ok) {
+                const bubble = container.closest('.chat-bubble');
+                // The text div
+                const textDiv = Array.from(bubble.children).find(el =>
+                    el.tagName === 'DIV' &&
+                    !el.classList.contains('bubble-time') &&
+                    !el.classList.contains('edit-container') &&
+                    !el.classList.contains('msg-actions')
+                );
+
+                if (textDiv) {
+                    textDiv.innerText = data.text; // Ensure HTML safety if returning raw text, or escapeHtml if backend returns raw
+                    textDiv.style.display = '';
+                }
+                container.remove();
+
+                const actions = bubble.querySelector('.msg-actions');
+                if (actions) actions.style.display = '';
+            } else {
+                alert(data.error || "Error saving message.");
+            }
+        }
+
         function filterChatList() {
             const q = document.getElementById('chatSearchInput').value.toLowerCase();
             document.querySelectorAll('.chat-list-item').forEach(item => {

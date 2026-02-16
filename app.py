@@ -314,6 +314,33 @@ def dashboard_stats():
     total_faqs = FAQ.query.count()
     total_announcements = Announcement.query.count()
 
+    # --- Fetch Real Inquiry Status Data ---
+    inq_status_counts = db.session.query(Inquiry.status, db.func.count(Inquiry.id)).group_by(Inquiry.status).all()
+    
+    inq_labels = []
+    inq_data = []
+    inq_colors = []
+    
+    # Color mapping matching the previous design
+    status_colors = {
+        "New": "#44BBA4",       # Teal
+        "In Progress": "#f59e0b", # Orange
+        "Resolved": "#3F88C5",  # Blue
+        "Urgent": "#E94F37"     # Red
+    }
+    
+    for status, count in inq_status_counts:
+        status_label = status if status else "Unknown"
+        inq_labels.append(status_label)
+        inq_data.append(count)
+        inq_colors.append(status_colors.get(status_label, "#94a3b8")) # Gray if unknown status
+
+    # Handle empty case
+    if not inq_data:
+        inq_labels = ["No Data"]
+        inq_data = [0]
+        inq_colors = ["#e2e8f0"]
+
     return jsonify({
         "solid_stats": [
             {"key": "total_customers", "label": "Total Customers", "value": total_customers, "icon": "👥", "color": "#3F88C5"},
@@ -337,8 +364,8 @@ def dashboard_stats():
                 "key": "inquiry_status",
                 "label": "Inquiry Status Breakdown",
                 "type": "doughnut",
-                "labels": ["New", "In Progress", "Resolved", "Urgent"],
-                "datasets": [{"label": "Inquiries", "data": [18, 12, 35, 5], "backgroundColor": ["#44BBA4","#f59e0b","#3F88C5","#E94F37"]}]
+                "labels": inq_labels,
+                "datasets": [{"label": "Inquiries", "data": inq_data, "backgroundColor": inq_colors}]
             },
             {
                 "key": "customer_growth",
@@ -742,12 +769,29 @@ def api_chat_link_inquiry(session_id):
 
 
 
+
+@app.route('/api/chat/message/<int:message_id>/edit', methods=['POST'])
+def api_chat_edit_message(message_id):
+    msg = ChatMessage.query.get_or_404(message_id)
+    # Allow editing agent and bot messages
+    if msg.sender_type not in ('agent', 'bot'):
+        return jsonify({'ok': False, 'error': 'Cannot edit customer/system messages.'}), 400
+    
+    data = request.get_json()
+    new_text = data.get('text')
+    if not new_text or not new_text.strip():
+        return jsonify({'ok': False, 'error': 'Text cannot be empty.'}), 400
+
+    msg.text = new_text.strip()
+    db.session.commit()
+    return jsonify({'ok': True, 'text': msg.text})
+
 @app.route('/api/chat/message/<int:message_id>/delete', methods=['POST'])
 def api_chat_delete_message(message_id):
     msg = ChatMessage.query.get_or_404(message_id)
-    # Only allow deleting agent and customer messages
-    if msg.sender_type not in ('agent', 'customer'):
-        return jsonify({'ok': False, 'error': 'Cannot delete system/bot messages.'}), 400
+    # Only allow deleting agent, customer, and bot messages
+    if msg.sender_type not in ('agent', 'customer', 'bot'):
+        return jsonify({'ok': False, 'error': 'Cannot delete system messages.'}), 400
     db.session.delete(msg)
     db.session.commit()
     return jsonify({'ok': True})
@@ -1104,6 +1148,27 @@ def api_create_inquiry():
     )
     
     return jsonify({"ok": True, "id": new_inquiry.id})
+
+@app.route('/api/inquiry/<int:id>/update', methods=['PUT'])
+def api_update_inquiry(id):
+    inquiry = Inquiry.query.get_or_404(id)
+    data = request.get_json()
+    
+    inquiry.status = data.get('status', inquiry.status)
+    inquiry.assigned_rep = data.get('assigned_rep', inquiry.assigned_rep)
+    inquiry.description = data.get('description', inquiry.description)
+    inquiry.notes = data.get('notes', inquiry.notes)
+    
+    db.session.commit()
+    
+    create_notification(
+        'inquiry',
+        'Inquiry Updated',
+        f'Inquiry for "{inquiry.customer}" was updated by JAANN AZRI 252499L.',
+        icon='✏️'
+    )
+    
+    return jsonify({"ok": True, "id": inquiry.id})
 
 # Helper functions to serialize objects
 def template_to_dict(t):
