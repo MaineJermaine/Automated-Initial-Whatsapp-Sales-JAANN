@@ -1,13 +1,31 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, make_response
+from flask import Flask, render_template, request, redirect, url_for, jsonify, make_response, session, has_request_context
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+import os
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
+# Ensure upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db = SQLAlchemy(app)
+app.secret_key = 'secure_admin_key_2026'
 
 # --- 1. MODELS (All models must be defined before create_all) ---
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    name = db.Column(db.String(100), default='Admin')
+    bio = db.Column(db.Text, default='')
+    profile_picture = db.Column(db.String(200), default='https://ui-avatars.com/api/?name=Admin&background=random')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 class Rule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -16,6 +34,9 @@ class Rule(db.Model):
     score = db.Column(db.Integer, nullable=False)
     operation = db.Column(db.String(10), nullable=False, default='+') 
     active = db.Column(db.Boolean, default=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 class Inquiry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -27,6 +48,9 @@ class Inquiry(db.Model):
     notes = db.Column(db.Text)
     messages = db.relationship('Message', backref='inquiry', cascade="all, delete-orphan")
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=False)
@@ -34,6 +58,9 @@ class Message(db.Model):
     text = db.Column(db.Text)
     time = db.Column(db.String(50))
     is_agent = db.Column(db.Boolean, default=False)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 # Add this to your models in app.py
 class Customer(db.Model):
@@ -48,6 +75,9 @@ class Customer(db.Model):
     notes = db.Column(db.Text)
     last_contact = db.Column(db.String(50))
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
 class AutoReplyTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
@@ -57,6 +87,9 @@ class AutoReplyTemplate(db.Model):
     usage_count = db.Column(db.Integer, default=0)
     created_at = db.Column(db.String(50))
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
 class FAQ(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     question = db.Column(db.String(200), nullable=False)
@@ -65,12 +98,18 @@ class FAQ(db.Model):
     click_count = db.Column(db.Integer, default=0)
     created_at = db.Column(db.String(50))
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
 class Announcement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
     content = db.Column(db.Text, nullable=False)
     priority = db.Column(db.String(20), nullable=False, default='normal')  # low, normal, high, urgent
     created_at = db.Column(db.String(50))
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 class ChatSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,6 +127,9 @@ class ChatSession(db.Model):
     linked_customer = db.relationship('Customer', backref='chat_sessions')
     linked_inquiry = db.relationship('Inquiry', backref='chat_sessions')
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
 class ChatMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
@@ -95,6 +137,9 @@ class ChatMessage(db.Model):
     sender_name = db.Column(db.String(100))
     text = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.String(50))
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -106,8 +151,16 @@ class Notification(db.Model):
     created_at = db.Column(db.String(50))
     is_read = db.Column(db.Boolean, default=False)
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
 # Helper to create notifications
-def create_notification(notif_type, title, message, icon='🔔', created_by='JAANN AZRI 252499L'):
+def create_notification(notif_type, title, message, icon='🔔', created_by=None):
+    if created_by is None:
+        if has_request_context():
+            created_by = session.get('user_name', 'System')
+        else:
+            created_by = 'System'
     from datetime import datetime
     notif = Notification(
         type=notif_type,
@@ -122,8 +175,20 @@ def create_notification(notif_type, title, message, icon='🔔', created_by='JAA
     return notif
 
 # Create tables logic
+def seed_admin():
+    if not User.query.filter_by(username='252499L').first():
+        admin = User(
+            username='252499L', 
+            password=generate_password_hash('fjr1300A15'), 
+            name='Admin User', 
+            bio='System Administrator'
+        )
+        db.session.add(admin)
+        db.session.commit()
+
 with app.app_context():
     db.create_all()
+    seed_admin()
 
 def seed_chat_data():
     """Seed sample chat conversations if none exist."""
@@ -273,6 +338,99 @@ def calculate_session_score(session):
             except:
                 pass
     return score
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user:
+            # Support both hashed and legacy plain text passwords during transition
+            is_valid = False
+            try:
+                if check_password_hash(user.password, password):
+                    is_valid = True
+            except:
+                pass # Not a hash
+            
+            if not is_valid and user.password == password:
+                is_valid = True
+                # Optional: Upgrade to hash on successful login? 
+                # user.password = generate_password_hash(password)
+                # db.session.commit()
+
+            if is_valid:
+                session['logged_in'] = True
+                session['user_id'] = user.id
+                session['user_name'] = user.name
+                session['user_pic'] = user.profile_picture
+                return redirect(url_for('dashboard'))
+            else:
+                return render_template('login.html', error="Invalid credentials")
+        else:
+            return render_template('login.html', error="Invalid credentials")
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+        
+    user_id = session.get('user_id')
+    if not user_id:
+        session.clear()
+        return redirect(url_for('login'))
+        
+    user = User.query.get(user_id)
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        user.name = request.form.get('name')
+        user.bio = request.form.get('bio')
+        
+        # Password change
+        new_pass = request.form.get('new_password')
+        confirm_pass = request.form.get('confirm_password')
+        if new_pass:
+            if new_pass == confirm_pass:
+                user.password = generate_password_hash(new_pass)
+            else:
+                return render_template('edit_profile.html', user=user, error="Passwords do not match")
+        
+        # Profile Picture
+        if 'profile_picture' in request.files:
+            file = request.files['profile_picture']
+            if file and file.filename != '':
+                filename = secure_filename(file.filename)
+                # Save to specific folder
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                user.profile_picture = filename # Store filename only
+                
+        db.session.commit()
+        
+        # Update session data
+        session['user_name'] = user.name
+        session['user_pic'] = user.profile_picture
+        
+        return redirect(url_for('profile'))
+        
+    return render_template('edit_profile.html', user=user)
+
+@app.before_request
+def require_login():
+    allowed_routes = ['login', 'static']
+    if request.endpoint and request.endpoint not in allowed_routes and not session.get('logged_in'):
+        return redirect(url_for('login'))
 
 @app.route('/')
 @app.route('/dashboard')
@@ -487,7 +645,7 @@ def edit_customer(id):
         create_notification(
             'customer',
             'Customer Updated',
-            f'Customer "{customer.name}" was updated by JAANN AZRI 252499L.',
+            f'Customer "{customer.name}" was updated by {session.get("user_name", "Admin")}.',
             icon='✏️'
         )
         
@@ -576,7 +734,7 @@ def api_create_customer():
     create_notification(
         'customer',
         'New Customer Added',
-        f'Customer "{new_cust.name}" was added by JAANN AZRI 252499L.',
+        f'Customer "{new_cust.name}" was added by {session.get("user_name", "Admin")}.',
         icon='👤'
     )
     
@@ -593,7 +751,7 @@ def api_update_customer_notes(id):
     create_notification(
         'customer',
         'Customer Notes Updated',
-        f'Notes for "{customer.name}" were updated by JAANN AZRI 252499L.',
+        f'Notes for "{customer.name}" were updated by {session.get("user_name", "Admin")}.',
         icon='📝'
     )
     
@@ -916,7 +1074,7 @@ def add_rule():
         create_notification(
             'rule',
             'New Scoring Rule Created',
-            f'Rule "{new_rule.name}" was created by JAANN AZRI 252499L.',
+            f'Rule "{new_rule.name}" was created by {session.get("user_name", "Admin")}.',
             icon='⚙️'
         )
         
@@ -937,7 +1095,7 @@ def edit_rule(id):
         create_notification(
             'rule',
             'Scoring Rule Updated',
-            f'Rule "{rule.name}" was updated by JAANN AZRI 252499L.',
+            f'Rule "{rule.name}" was updated by {session.get("user_name", "Admin")}.',
             icon='✏️'
         )
         
@@ -977,7 +1135,7 @@ def handle_templates():
         create_notification(
             'template',
             'New Auto-Reply Template Created',
-            f'Template "{new_template.title}" was created by JAANN AZRI 252499L.',
+            f'Template "{new_template.title}" was created by {session.get("user_name", "Admin")}.',
             icon='💬'
         )
         
@@ -1004,7 +1162,7 @@ def handle_single_template(id):
     create_notification(
         'template',
         'Auto-Reply Template Updated',
-        f'Template "{template.title}" was updated by JAANN AZRI 252499L.',
+        f'Template "{template.title}" was updated by {session.get("user_name", "Admin")}.',
         icon='✏️'
     )
     
@@ -1027,7 +1185,7 @@ def handle_faqs():
         create_notification(
             'template',
             'New FAQ Created',
-            f'FAQ "{new_faq.question}" was created by JAANN AZRI 252499L.',
+            f'FAQ "{new_faq.question}" was created by {session.get("user_name", "Admin")}.',
             icon='❓'
         )
         
@@ -1053,7 +1211,7 @@ def handle_single_faq(id):
     create_notification(
         'template',
         'FAQ Updated',
-        f'FAQ "{faq.question}" was updated by JAANN AZRI 252499L.',
+        f'FAQ "{faq.question}" was updated by {session.get("user_name", "Admin")}.',
         icon='✏️'
     )
     
@@ -1143,7 +1301,7 @@ def api_create_inquiry():
     create_notification(
         'inquiry',
         'New Inquiry Created',
-        f'Inquiry for "{new_inquiry.customer}" was created by JAANN AZRI 252499L.',
+        f'Inquiry for "{new_inquiry.customer}" was created by {session.get("user_name", "Admin")}.',
         icon='📋'
     )
     
@@ -1164,11 +1322,15 @@ def api_update_inquiry(id):
     create_notification(
         'inquiry',
         'Inquiry Updated',
-        f'Inquiry for "{inquiry.customer}" was updated by JAANN AZRI 252499L.',
+        f'Inquiry for "{inquiry.customer}" was updated by {session.get("user_name", "Admin")}.',
         icon='✏️'
     )
     
     return jsonify({"ok": True, "id": inquiry.id})
+
+@app.route('/settings')
+def settings():
+    return render_template('settings.html')
 
 # Helper functions to serialize objects
 def template_to_dict(t):
@@ -1215,7 +1377,7 @@ def create_announcement():
     create_notification(
         'announcement',
         f'📢 {new_announcement.title}',
-        f'Announcement by JAANN AZRI 252499L: {new_announcement.content[:100]}',
+        f'Announcement by {session.get("user_name", "Admin")}: {new_announcement.content[:100]}',
         icon='📢'
     )
     
@@ -1233,7 +1395,7 @@ def update_announcement(id):
     create_notification(
         'announcement',
         'Announcement Updated',
-        f'Announcement "{announcement.title}" was updated by JAANN AZRI 252499L.',
+        f'Announcement "{announcement.title}" was updated by {session.get("user_name", "Admin")}.',
         icon='✏️'
     )
     

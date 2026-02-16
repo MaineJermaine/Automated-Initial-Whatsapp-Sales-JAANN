@@ -49,6 +49,34 @@
         <a href="/history" class="nav-link">Chat History</a>
         <a href="/repository" class="nav-link">Inquiry Repository</a>
         <a href="/scoring" class="nav-link">Lead Scoring</a>
+        <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
+            <div class="dropdown">
+                <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
+                    id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
+                    <div class="avatar-circle bg-primary text-white me-2"
+                        style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">
+                        {% if session.get('user_pic') and 'http' in session.get('user_pic') %}
+                        <img src="{{ session.get('user_pic') }}" alt="User"
+                            style="width:100%; height:100%; object-fit:cover;">
+                        {% elif session.get('user_pic') %}
+                        <img src="{{ url_for('static', filename='uploads/' + session.get('user_pic')) }}" alt="User"
+                            style="width:100%; height:100%; object-fit:cover;">
+                        {% else %}
+                        {{ session.get('user_name', 'Admin')[0] | upper }}
+                        {% endif %}
+                    </div>
+                    <strong>{{ session.get('user_name', 'Admin') }}</strong>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdownUser1">
+                    <li><a class="dropdown-item" href="/profile">Edit Profile</a></li>
+                    <li><a class="dropdown-item" href="/settings">Settings</a></li>
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
+                    <li><a class="dropdown-item" href="/logout">Sign out</a></li>
+                </ul>
+            </div>
+        </div>
     </aside>
 
     <main class="main">

@@ -42,9 +42,11 @@ body {
     width: 250px;
     background: var(--slate-900);
     color: #fff;
-    min-height: 100vh;
+    height: 100vh;
     padding: 30px 20px;
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .sidebar h2 {
