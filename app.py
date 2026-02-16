@@ -2039,7 +2039,12 @@ def get_inquiries():
     query = db.session.query(Inquiry, User).outerjoin(User, Inquiry.assigned_rep == User.username)
     
     if search:
-        query = query.filter(Inquiry.customer.ilike(f'%{search}%'))
+        query = query.filter(or_(
+            Inquiry.customer.ilike(f'%{search}%'),
+            User.name.ilike(f'%{search}%'),
+            User.username.ilike(f'%{search}%'),
+            Inquiry.assigned_rep.ilike(f'%{search}%')
+        ))
     if status_filters:
         query = query.filter(Inquiry.status.in_(status_filters))
         

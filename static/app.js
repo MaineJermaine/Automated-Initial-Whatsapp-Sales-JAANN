@@ -363,36 +363,6 @@ async function saveDashboardConfig() {
 
 
 
-async function refreshInquiryTable() {
-    const search = document.getElementById('search-input')?.value || "";
-    const checkboxes = document.querySelectorAll('.filter-cb:checked');
-    let url = `/api/inquiries?search=${search}`;
-    checkboxes.forEach(cb => url += `&status[]=${cb.value}`);
-
-    try {
-        const res = await fetch(url);
-        const data = await res.json();
-        const tbody = document.getElementById('inquiry-tbody');
-        if (!tbody) return;
-
-        tbody.innerHTML = data.map(i => `
-            <tr>
-                <td>${i.id}</td>
-                <td>
-                    <b>${i.customer}</b>
-                    <div class="text-muted" style="font-size:0.7rem;">
-                        Last updated by ${i.updated_by || 'System'} at ${i.updated_at || 'Recently'}
-                    </div>
-                </td>
-                <td>${i.inquiry_type}</td>
-                <td><span class="badge rounded-pill bg-info-subtle text-dark">${i.status}</span></td>
-                <td>${i.assigned_rep}</td>
-                <td><a href="/inquiry/${i.id}" class="btn btn-sm btn-outline-primary">View</a></td>
-            </tr>`).join('');
-    } catch (err) {
-        console.error("Error fetching inquiries:", err);
-    }
-}
 
 /* ==========================================================================
    3. CUSTOMER LIST LOGIC
@@ -462,14 +432,6 @@ window.addEventListener('DOMContentLoaded', () => {
     // E. SCORING PAGE SPECIFIC
     // (Filter logic is handled inline in lead-scoring.html)
 
-    // F. REPOSITORY PAGE SPECIFIC
-    if (pageId === 'page-repository') {
-        refreshInquiryTable();
-        document.getElementById('search-input')?.addEventListener('input', refreshInquiryTable);
-        document.querySelectorAll('.filter-cb').forEach(cb => {
-            cb.addEventListener('change', refreshInquiryTable);
-        });
-    }
 
     // G. CUSTOMER PAGE SPECIFIC
     if (pageId === 'page-customers') {

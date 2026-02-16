@@ -314,7 +314,7 @@
                                     <select id="newInqRep" class="form-select">
                                         <option value="">-- Select Rep --</option>
                                         {% for u in users %}
-                                        <option value="{{ u.name }}">{{ u.name }}</option>
+                                        <option value="{{ u.username }}">{{ u.name }} (@{{ u.username }})</option>
                                         {% endfor %}
                                     </select>
                                 </div>
