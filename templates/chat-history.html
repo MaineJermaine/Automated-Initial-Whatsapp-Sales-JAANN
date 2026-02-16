@@ -810,6 +810,9 @@
         <a href="/history" class="nav-link nav-history active">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
+        {% if session.get('user_role') == 'super_admin' %}
+        <a href="/admin/create-account" class="nav-link nav-admin">Manage Accounts</a>
+        {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
                 <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
@@ -938,13 +941,15 @@
                             <div class="chat-header-status" id="chatHeaderStatus"></div>
                         </div>
                     </div>
-                    <div class="chat-header-actions">
+                    <div class="chat-header-actions" id="chatHeaderActions">
                         <button class="btn btn-sm btn-gray" onclick="openLinkCustomerModal()" id="btnLinkCustomer">👤
                             Link</button>
                         <button class="btn btn-sm btn-gray" onclick="openLinkInquiryModal()" id="btnLinkInquiry">📋
                             Link</button>
-                        <button class="btn btn-sm btn-blue" onclick="confirmTakeOver()" id="btnTakeOver">🎧 Take
-                            Over</button>
+                        <div id="transferActions" style="display:inline-flex; gap:8px;">
+                            <button class="btn btn-sm btn-blue" onclick="confirmTakeOver()" id="btnTakeOver">🎧 Take
+                                Over</button>
+                        </div>
                     </div>
                 </div>
 
@@ -1308,38 +1313,57 @@
             document.getElementById('chatAvatar').textContent = initials.toUpperCase();
             document.getElementById('chatHeaderName').textContent = name;
 
-            // Status
+            // Ownership & Transfer Logic
+            const actionsDiv = document.getElementById('transferActions');
             const statusEl = document.getElementById('chatHeaderStatus');
+            const msgInput = document.getElementById('chatMsgInput');
+            const btnSend = document.getElementById('btnSend');
+            const currentUserId = data.session.current_user_id;
+            const assignedId = data.session.assigned_agent_id;
+            const isOwner = assignedId === currentUserId;
+
+            // 1. Status Display
             if (data.session.status === 'bot') {
                 statusEl.innerHTML = '<span style="color:#f59e0b;">🤖 Chatbot Active</span>';
-            } else if (data.session.status === 'agent_active') {
-                statusEl.innerHTML = '<span style="color:#10b981;">🟢 Agent Active</span>';
+            } else if (assignedId) {
+                statusEl.innerHTML = `<span style="color:#10b981;">🟢 Agent Active: ${data.session.assigned_agent_name}</span>`;
             } else {
                 statusEl.innerHTML = '<span style="color:#94a3b8;">⚪ Closed</span>';
             }
 
-            // Take over button
-            const btnTakeOver = document.getElementById('btnTakeOver');
-            if (data.session.status === 'agent_active') {
-                btnTakeOver.disabled = true;
-                btnTakeOver.textContent = '✅ Taken Over';
-                btnTakeOver.classList.replace('btn-blue', 'btn-gray');
-            } else {
-                btnTakeOver.disabled = false;
-                btnTakeOver.textContent = '🎧 Take Over';
-                btnTakeOver.classList.replace('btn-gray', 'btn-blue');
-            }
-
-            // Enable/disable input
-            const msgInput = document.getElementById('chatMsgInput');
-            const btnSend = document.getElementById('btnSend');
-            if (data.session.status === 'agent_active') {
+            // 2. Action Buttons & Input State
+            actionsDiv.innerHTML = '';
+            if (!assignedId) {
+                // Unassigned
+                actionsDiv.innerHTML = '<button class="btn btn-sm btn-blue" onclick="confirmTakeOver()">🎧 Take Over</button>';
+                msgInput.disabled = true;
+                msgInput.placeholder = 'Take over chat to start typing...';
+                btnSend.disabled = true;
+            } else if (isOwner) {
+                // Current user is owner
+                if (data.session.transfer_status === 'pending') {
+                    actionsDiv.innerHTML = `
+                        <div class="d-flex align-items-center gap-2">
+                            <small class="text-muted">Transfer requested by ${data.session.requested_agent_name}</small>
+                            <button class="btn btn-sm btn-outline-success" onclick="handleTransfer('accept')">Accept</button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="handleTransfer('reject')">Reject</button>
+                        </div>
+                    `;
+                } else {
+                    actionsDiv.innerHTML = '<span class="badge bg-success-subtle text-success">You own this chat</span>';
+                }
                 msgInput.disabled = false;
                 msgInput.placeholder = 'Type your message...';
                 btnSend.disabled = false;
             } else {
+                // Assigned to someone else
+                if (data.session.transfer_status === 'pending' && data.session.requested_agent_id === currentUserId) {
+                    actionsDiv.innerHTML = '<span class="badge bg-warning-subtle text-warning">Transfer Request Sent</span>';
+                } else {
+                    actionsDiv.innerHTML = '<button class="btn btn-sm btn-outline-primary" onclick="requestTransfer()">🔄 Request Transfer</button>';
+                }
                 msgInput.disabled = true;
-                msgInput.placeholder = 'Take over chat to start typing...';
+                msgInput.placeholder = `Only ${data.session.assigned_agent_name} can respond...`;
                 btnSend.disabled = true;
             }
 
@@ -1581,31 +1605,36 @@
             const data = await res.json();
 
             if (data.ok) {
-                currentSessionStatus = 'agent_active';
+                selectChat(currentSessionId); // Refresh UI
+            } else {
+                alert(data.error || 'Failed to take over.');
+            }
+        }
 
-                const container = document.getElementById('chatMessagesScroll');
-                const div = document.createElement('div');
-                div.className = 'chat-bubble bubble-system';
-                div.innerHTML = `<div>${escapeHtml(data.message.text)}</div>`;
-                container.appendChild(div);
-                container.scrollTop = container.scrollHeight;
+        async function requestTransfer() {
+            if (!confirm('Request to take over this chat from the current agent?')) return;
+            const res = await fetch(`/api/chat/session/${currentSessionId}/request-transfer`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (data.ok) {
+                selectChat(currentSessionId);
+            } else {
+                alert(data.error);
+            }
+        }
 
-                document.getElementById('chatHeaderStatus').innerHTML = '<span style="color:#10b981;">🟢 Agent Active</span>';
-                const btnTakeOver = document.getElementById('btnTakeOver');
-                btnTakeOver.disabled = true;
-                btnTakeOver.textContent = '✅ Taken Over';
-                btnTakeOver.classList.replace('btn-blue', 'btn-gray');
-
-                document.getElementById('chatMsgInput').disabled = false;
-                document.getElementById('chatMsgInput').placeholder = 'Type your message...';
-                document.getElementById('chatMsgInput').focus();
-                document.getElementById('btnSend').disabled = false;
-
-                const sidebarItem = document.querySelector(`.chat-list-item[data-session-id="${currentSessionId}"]`);
-                if (sidebarItem) {
-                    const dot = sidebarItem.querySelector('.chat-status-dot');
-                    dot.className = 'chat-status-dot dot-agent';
-                }
+        async function handleTransfer(action) {
+            const res = await fetch(`/api/chat/session/${currentSessionId}/handle-transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                selectChat(currentSessionId);
+            } else {
+                alert(data.error);
             }
         }
 

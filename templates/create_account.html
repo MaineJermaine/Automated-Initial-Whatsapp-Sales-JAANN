@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Accounts - Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .account-form-card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .profile-pic-preview {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid var(--primary-light);
+            margin-bottom: 1rem;
+        }
+
+        .form-section-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--slate-900);
+            margin-bottom: 1.5rem;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #edf2f7;
+        }
+    </style>
+</head>
+
+<body id="page-admin-accounts">
+    <aside class="sidebar">
+        <h2>CRM Admin</h2>
+        <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
+        <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
+        <a href="/history" class="nav-link nav-history">Chat History</a>
+        <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
+        <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
+        {% if session.get('user_role') == 'super_admin' %}
+        <a href="/admin/create-account" class="nav-link nav-admin active">Manage Accounts</a>
+        {% endif %}
+        <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
+            <div class="dropdown">
+                <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
+                    id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
+                    <div class="avatar-circle bg-primary text-white me-2"
+                        style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">
+                        {% if session.get('user_pic') and 'http' in session.get('user_pic') %}
+                        <img src="{{ session.get('user_pic') }}" alt="User"
+                            style="width:100%; height:100%; object-fit:cover;">
+                        {% elif session.get('user_pic') %}
+                        <img src="{{ url_for('static', filename='uploads/' + session.get('user_pic')) }}" alt="User"
+                            style="width:100%; height:100%; object-fit:cover;">
+                        {% else %}
+                        {{ session.get('user_name', 'Admin')[0] | upper }}
+                        {% endif %}
+                    </div>
+                    <strong>{{ session.get('user_name', 'Admin') }}</strong>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdownUser1">
+                    <li><a class="dropdown-item" href="/profile">Edit Profile</a></li>
+                    <li><a class="dropdown-item" href="/settings">Settings</a></li>
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
+                    <li><a class="dropdown-item" href="/logout">Sign out</a></li>
+                </ul>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main">
+        <div class="header">
+            <div class="header-left">
+                <h1 style="margin:0; font-size: 24px;">Manage Accounts</h1>
+            </div>
+            <div class="header-right"></div>
+        </div>
+
+        <div class="content-body" style="padding: 30px;">
+            <div class="account-form-card mb-5">
+                <h3 class="form-section-title">Create New Team Account</h3>
+
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                {% if success %}
+                <div class="alert alert-success">{{ success }}</div>
+                {% endif %}
+
+                <form action="{{ url_for('admin_create_account') }}" method="POST" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-md-4 text-center border-end">
+                            <img id="avatarPreview"
+                                src="https://ui-avatars.com/api/?name=New+User&background=6366f1&color=fff"
+                                class="profile-pic-preview" alt="Preview">
+                            <label class="btn btn-sm btn-outline-primary d-block mx-auto mb-2"
+                                style="max-width: 150px;">
+                                Upload Photo
+                                <input type="file" name="profile_picture" id="profilePicInput" hidden accept="image/*">
+                            </label>
+                            <small class="text-muted">JPG, PNG allowed</small>
+                        </div>
+                        <div class="col-md-8 px-4">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">Username</label>
+                                    <input type="text" name="username" class="form-control" required
+                                        placeholder="john.doe">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">Password</label>
+                                    <input type="password" name="password" class="form-control" required
+                                        placeholder="••••••••">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">Display Name</label>
+                                    <input type="text" name="name" class="form-control" required placeholder="John Doe">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold small">Account Role</label>
+                                    <select name="role" class="form-select">
+                                        <option value="agent">Agent (Standard)</option>
+                                        <option value="super_admin">Super Admin (Full Access)</option>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label fw-bold small">Biography</label>
+                                    <textarea name="bio" class="form-control" rows="3"
+                                        placeholder="Tell us about this team member..."></textarea>
+                                </div>
+                                <div class="col-12 text-end mt-4">
+                                    <button type="submit" class="btn btn-blue px-4">Create Account</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Existing Accounts List -->
+            <div class="card shadow-sm border-0" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <h3 class="form-section-title">Existing Accounts</h3>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-3">User</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th class="text-end pe-3">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr>
+                                    <td class="ps-3">
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-circle me-3"
+                                                style="width: 40px; height: 40px; border-radius: 50%; overflow: hidden;">
+                                                {% if user.profile_picture and 'http' in user.profile_picture %}
+                                                <img src="{{ user.profile_picture }}" alt="User"
+                                                    style="width: 100%; height: 100%; object-fit: cover;">
+                                                {% elif user.profile_picture %}
+                                                <img src="{{ url_for('static', filename='uploads/' + user.profile_picture) }}"
+                                                    alt="User" style="width: 100%; height: 100%; object-fit: cover;">
+                                                {% else %}
+                                                <div
+                                                    class="bg-light text-primary d-flex align-items-center justify-content-center w-100 h-100 fw-bold">
+                                                    {{ user.username[0] | upper }}
+                                                </div>
+                                                {% endif %}
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">{{ user.name }}</div>
+                                                <div class="text-muted small">@{{ user.username }}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span
+                                            class="badge {{ 'bg-primary-subtle text-primary' if user.role == 'super_admin' else 'bg-secondary-subtle text-secondary' }} px-3 py-2">
+                                            {{ 'Super Admin' if user.role == 'super_admin' else 'Agent' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-success-subtle text-success px-2 py-1"
+                                            style="font-size: 0.7rem;">ACTIVE</span>
+                                    </td>
+                                    <td class="text-end pe-3">
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary"
+                                                onclick="viewUser({{ user.id }})" title="View Profile">
+                                                👁️
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-warning"
+                                                onclick="editUser({{ user.id }})" title="Edit Account">
+                                                ✏️
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                onclick="confirmDeleteUser({{ user.id }}, '{{ user.username }}')"
+                                                title="Delete Account" {{ 'disabled' if session.get('user_id')==user.id
+                                                or user.username=='252499L' }}>
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal View User -->
+    <div class="modal fade" id="viewUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">User Profile</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <div class="avatar-circle mx-auto mb-3"
+                        style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; border: 3px solid #eee;">
+                        <img id="viewUserPic" src="" alt="User" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <h4 id="viewUserName" class="fw-bold mb-1"></h4>
+                    <p id="viewUserHandle" class="text-primary mb-3"></p>
+                    <div class="mb-3">
+                        <span id="viewUserRole" class="badge bg-primary-subtle text-primary px-3 py-2"></span>
+                    </div>
+                    <div class="text-start px-4">
+                        <label class="fw-bold small text-muted">Biography</label>
+                        <p id="viewUserBio" class="bg-light p-3 rounded" style="font-size: 0.9rem;"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Edit User -->
+    <div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">Edit Account</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editUserForm" method="POST" enctype="multipart/form-data">
+                    <div class="modal-body">
+                        <div class="mb-3 text-center">
+                            <img id="editUserPicPreview" src="" class="profile-pic-preview" alt="Preview">
+                            <input type="file" name="profile_picture" id="editUserPicInput"
+                                class="form-control form-control-sm mt-2">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Display Name</label>
+                            <input type="text" name="name" id="editUserName" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Role</label>
+                            <select name="role" id="editUserRole" class="form-select">
+                                <option value="agent">Agent (Standard)</option>
+                                <option value="super_admin">Super Admin (Full Access)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Bio</label>
+                            <textarea name="bio" id="editUserBio" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Update Password (Optional)</label>
+                            <input type="password" name="password" class="form-control"
+                                placeholder="Leave blank to keep current">
+                        </div>
+                    </div>
+                    <div class="modal-footer border-0">
+                        <button type="button" class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-blue">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Delete Confirm -->
+    <div class="modal fade" id="deleteUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
+                <div class="modal-body text-center py-4">
+                    <div class="text-danger mb-3" style="font-size: 3rem;">⚠️</div>
+                    <h5 class="fw-bold">Delete Account?</h5>
+                    <p class="text-muted small px-3">Are you sure you want to delete <span id="deleteUserNameDisplay"
+                            class="fw-bold"></span>?</p>
+                    <input type="hidden" id="deleteUserId">
+                    <div class="d-flex gap-2 justify-content-center mt-4">
+                        <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-danger w-100" onclick="executeDelete()">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        // Profile Pic Preview for Creation
+        document.getElementById('profilePicInput').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    document.getElementById('avatarPreview').src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // VIEW USER
+        async function viewUser(userId) {
+            const res = await fetch(`/api/admin/user/${userId}`);
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById('viewUserName').textContent = data.name;
+                document.getElementById('viewUserHandle').textContent = `@${data.username}`;
+                document.getElementById('viewUserRole').textContent = data.role === 'super_admin' ? 'Super Admin' : 'Agent';
+                document.getElementById('viewUserBio').textContent = data.bio || 'No biography available.';
+
+                const picUrl = data.profile_picture ?
+                    (data.profile_picture.startsWith('http') ? data.profile_picture : `/static/uploads/${data.profile_picture}`) :
+                    `https://ui-avatars.com/api/?name=${data.name}&background=random`;
+                document.getElementById('viewUserPic').src = picUrl;
+
+                const modal = new bootstrap.Modal(document.getElementById('viewUserModal'));
+                modal.show();
+            }
+        }
+
+        // EDIT USER
+        async function editUser(userId) {
+            const res = await fetch(`/api/admin/user/${userId}`);
+            if (res.ok) {
+                const data = await res.json();
+                const form = document.getElementById('editUserForm');
+                form.action = `/admin/edit-account/${userId}`;
+
+                document.getElementById('editUserName').value = data.name;
+                document.getElementById('editUserRole').value = data.role;
+                document.getElementById('editUserBio').value = data.bio || '';
+
+                const picUrl = data.profile_picture ?
+                    (data.profile_picture.startsWith('http') ? data.profile_picture : `/static/uploads/${data.profile_picture}`) :
+                    `https://ui-avatars.com/api/?name=${data.name}&background=random`;
+                document.getElementById('editUserPicPreview').src = picUrl;
+
+                const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+                modal.show();
+            }
+        }
+
+        // DELETE USER
+        function confirmDeleteUser(id, username) {
+            document.getElementById('deleteUserId').value = id;
+            document.getElementById('deleteUserNameDisplay').textContent = `@${username}`;
+            const modal = new bootstrap.Modal(document.getElementById('deleteUserModal'));
+            modal.show();
+        }
+
+        async function executeDelete() {
+            const userId = document.getElementById('deleteUserId').value;
+            const res = await fetch(`/admin/delete-account/${userId}`, { method: 'POST' });
+            if (res.ok) {
+                window.location.reload();
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Failed to delete account');
+            }
+        }
+    </script>
+</body>
+
+</html>

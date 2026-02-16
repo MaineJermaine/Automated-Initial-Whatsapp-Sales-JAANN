@@ -150,9 +150,13 @@
                     <hr class="my-4">
 
                     <div class="info-box mb-4">
-                        <div><strong>First Contact:</strong> {{ c.last_contact or "N/A" }}</div>
-                        <div><strong>Last Updated:</strong> {{ c.updated_at or "N/A" }}</div>
-                        <div><strong>Lead Source:</strong> WhatsApp Auto-Agent</div>
+                        <div class="mb-2"><strong>Created:</strong> {{ c.created_at or "Initial Setup" }}
+                            <span class="text-muted small">by {{ c.created_by or "System" }}</span>
+                        </div>
+                        <div class="mb-2"><strong>Last Edited:</strong> {{ c.updated_at or c.created_at or "N/A" }}
+                            <span class="text-muted small">by {{ c.updated_by or c.created_by or "System" }}</span>
+                        </div>
+                        <div><strong>Lead Source:</strong> Direct Website Conversion</div>
                     </div>
 
                     <div class="d-flex gap-2">

@@ -23,6 +23,9 @@
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring active">Lead Scoring</a>
+        {% if session.get('user_role') == 'super_admin' %}
+        <a href="/admin/create-account" class="nav-link nav-admin">Manage Accounts</a>
+        {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
                 <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
@@ -109,7 +112,13 @@
                         {% if rules|length > 0 %}
                         {% for rule in rules %}
                         <tr>
-                            <td class="fw-bold">{{ rule.name }}</td>
+                            <td class="fw-bold">
+                                {{ rule.name }}
+                                <div class="text-muted" style="font-size:0.7rem; font-weight:normal;">
+                                    Last updated by {{ rule.updated_by or 'System' }} at {{ rule.updated_at or
+                                    'Recently' }}
+                                </div>
+                            </td>
                             <td class="text-center">
                                 <span class="badge bg-info text-dark">{{ rule.operation }}</span>
                             </td>

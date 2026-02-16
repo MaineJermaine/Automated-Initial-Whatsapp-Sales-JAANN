@@ -75,8 +75,9 @@ function renderTemplates() {
             <div class="mb-2">
                 ${t.keywords.map(k => `<span class="badge bg-light text-dark border">${k}</span>`).join(' ')}
             </div>
-            <div class="small text-muted mt-auto pt-2 border-top d-flex justify-content-between">
+            <div class="small text-muted mt-auto pt-2 border-top d-flex justify-content-between flex-wrap">
                 <span>Used: ${t.usageCount} times</span>
+                <span>Edit: ${t.updated_at || 'Recently'} by ${t.updated_by || 'System'}</span>
             </div>
         </div>
     `).join('');
@@ -115,8 +116,9 @@ function renderFAQs() {
                 </div>
             </div>
             <p class="text-muted small">${f.answer}</p>
-            <div class="small text-muted mt-auto pt-2 border-top">
+            <div class="small text-muted mt-auto pt-2 border-top d-flex justify-content-between flex-wrap">
                 <span>Clicks: ${f.clickCount}</span>
+                <span>Edit: ${f.updated_at || 'Recently'} by ${f.updated_by || 'System'}</span>
             </div>
         </div>
     `).join('');

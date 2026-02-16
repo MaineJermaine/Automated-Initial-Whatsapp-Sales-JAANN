@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, m
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
 
@@ -23,6 +24,7 @@ class User(db.Model):
     name = db.Column(db.String(100), default='Admin')
     bio = db.Column(db.Text, default='')
     profile_picture = db.Column(db.String(200), default='https://ui-avatars.com/api/?name=Admin&background=random')
+    role = db.Column(db.String(20), default='agent') # super_admin, agent
     preferences = db.Column(db.Text, default='{}') # Stores dashboard layout/stats as JSON
 
     def __init__(self, **kwargs):
@@ -35,6 +37,10 @@ class Rule(db.Model):
     score = db.Column(db.Integer, nullable=False)
     operation = db.Column(db.String(10), nullable=False, default='+') 
     active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.String(50))
+    created_by = db.Column(db.String(100))
+    updated_at = db.Column(db.String(50))
+    updated_by = db.Column(db.String(100))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -47,6 +53,10 @@ class Inquiry(db.Model):
     status = db.Column(db.String(20), default='New')
     description = db.Column(db.Text)
     notes = db.Column(db.Text)
+    created_at = db.Column(db.String(50))
+    created_by = db.Column(db.String(100))
+    updated_at = db.Column(db.String(50))
+    updated_by = db.Column(db.String(100))
     messages = db.relationship('Message', backref='inquiry', cascade="all, delete-orphan")
 
     def __init__(self, **kwargs):
@@ -75,6 +85,10 @@ class Customer(db.Model):
     tags = db.Column(db.String(200)) # Stored as "VIP,New,Returning"
     notes = db.Column(db.Text)
     last_contact = db.Column(db.String(50))
+    created_at = db.Column(db.String(50))
+    created_by = db.Column(db.String(100))
+    updated_at = db.Column(db.String(50))
+    updated_by = db.Column(db.String(100))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -84,9 +98,12 @@ class AutoReplyTemplate(db.Model):
     title = db.Column(db.String(100), nullable=False)
     message = db.Column(db.Text, nullable=False)
     category = db.Column(db.String(50), nullable=False)
-    keywords = db.Column(db.Text)  # Stored as comma-separated string
     usage_count = db.Column(db.Integer, default=0)
+    keywords = db.Column(db.Text)  # Stored as comma-separated string
     created_at = db.Column(db.String(50))
+    created_by = db.Column(db.String(100))
+    updated_at = db.Column(db.String(50))
+    updated_by = db.Column(db.String(100))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -98,6 +115,9 @@ class FAQ(db.Model):
     category = db.Column(db.String(50), nullable=False)
     click_count = db.Column(db.Integer, default=0)
     created_at = db.Column(db.String(50))
+    created_by = db.Column(db.String(100))
+    updated_at = db.Column(db.String(50))
+    updated_by = db.Column(db.String(100))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -124,9 +144,14 @@ class ChatSession(db.Model):
     tags = db.Column(db.String(200), default='')  # comma-separated: impt,waiting,completed
     archived = db.Column(db.Boolean, default=False)
     pinned = db.Column(db.Boolean, default=False)
+    assigned_agent_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    requested_agent_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    transfer_status = db.Column(db.String(20), default='none')  # none, pending
     chat_messages = db.relationship('ChatMessage', backref='session', cascade="all, delete-orphan", order_by='ChatMessage.id')
     linked_customer = db.relationship('Customer', backref='chat_sessions')
     linked_inquiry = db.relationship('Inquiry', backref='chat_sessions')
+    assigned_agent = db.relationship('User', foreign_keys=[assigned_agent_id], backref='assigned_chats')
+    requested_agent = db.relationship('User', foreign_keys=[requested_agent_id], backref='requested_chats')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -387,6 +412,7 @@ def login():
                 session['user_id'] = user.id
                 session['user_name'] = user.name
                 session['user_pic'] = user.profile_picture
+                session['user_role'] = user.role or 'agent'
                 return redirect(url_for('dashboard'))
             else:
                 return render_template('login.html', error="Invalid credentials")
@@ -398,6 +424,116 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+@app.route('/admin/create-account', methods=['GET', 'POST'])
+def admin_create_account():
+    # Only 252499L or someone with super_admin role can access
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    current_user = User.query.get(session.get('user_id'))
+    if current_user.username != '252499L' and current_user.role != 'super_admin':
+        return render_template('404.html'), 404
+
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        name = request.form.get('name')
+        bio = request.form.get('bio')
+        role = request.form.get('role', 'agent')
+        
+        # Check if username exists
+        if User.query.filter_by(username=username).first():
+            return render_template('create_account.html', error="Username already exists")
+
+        # Handle profile picture
+        profile_pic_filename = None
+        file = request.files.get('profile_picture')
+        if file and file.filename != '':
+            filename = secure_filename(file.filename)
+            unique_filename = f"profile_{username}_{int(datetime.now().timestamp())}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+            profile_pic_filename = unique_filename
+
+        # Create user
+        new_user = User(
+            username=username,
+            password=generate_password_hash(password),
+            name=name,
+            bio=bio,
+            role=role
+        )
+        if profile_pic_filename:
+            new_user.profile_picture = profile_pic_filename
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        return render_template('create_account.html', success=f"Account for {username} created successfully!", users=User.query.all())
+
+    return render_template('create_account.html', users=User.query.all())
+
+@app.route('/admin/delete-account/<int:user_id>', methods=['POST'])
+def admin_delete_account(user_id):
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    current_user = User.query.get(session.get('user_id'))
+    if current_user.username != '252499L' and current_user.role != 'super_admin':
+        return jsonify({'error': 'Forbidden'}), 403
+
+    user_to_delete = User.query.get_or_404(user_id)
+    
+    # Prevent self-deletion
+    if user_to_delete.id == current_user.id:
+        return jsonify({'error': 'You cannot delete your own account'}), 400
+    
+    # Prevent deletion of primary admin
+    if user_to_delete.username == '252499L':
+        return jsonify({'error': 'Primary admin account cannot be deleted'}), 400
+
+    db.session.delete(user_to_delete)
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/admin/user/<int:user_id>')
+def api_admin_get_user(user_id):
+    if not session.get('logged_in') or session.get('user_role') != 'super_admin':
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    user = User.query.get_or_404(user_id)
+    return jsonify({
+        'id': user.id,
+        'username': user.username,
+        'name': user.name,
+        'role': user.role,
+        'bio': user.bio,
+        'profile_picture': user.profile_picture
+    })
+
+@app.route('/admin/edit-account/<int:user_id>', methods=['POST'])
+def admin_edit_account(user_id):
+    if not session.get('logged_in') or session.get('user_role') != 'super_admin':
+        return redirect(url_for('login'))
+    
+    user = User.query.get_or_404(user_id)
+    user.name = request.form.get('name')
+    user.bio = request.form.get('bio')
+    user.role = request.form.get('role')
+    
+    new_password = request.form.get('password')
+    if new_password:
+        user.password = generate_password_hash(new_password)
+        
+    file = request.files.get('profile_picture')
+    if file and file.filename != '':
+        filename = secure_filename(file.filename)
+        unique_filename = f"profile_{user.username}_{int(datetime.now().timestamp())}_{filename}"
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
+        user.profile_picture = unique_filename
+        
+    db.session.commit()
+    return redirect(url_for('admin_create_account'))
 
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
@@ -451,6 +587,13 @@ def require_login():
     allowed_routes = ['login', 'static']
     if request.endpoint and request.endpoint not in allowed_routes and not session.get('logged_in'):
         return redirect(url_for('login'))
+    
+    if session.get('logged_in') and session.get('user_id'):
+        user = User.query.get(session.get('user_id'))
+        if user:
+            session['user_role'] = user.role
+            session['user_name'] = user.name
+            session['user_pic'] = user.profile_picture
 
 @app.route('/')
 @app.route('/dashboard')
@@ -660,6 +803,10 @@ def edit_customer(id):
             selected_tags.append(new_tag)
         customer.tags = ','.join(selected_tags) if selected_tags else ''
         
+        from datetime import datetime
+        customer.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+        customer.updated_by = session.get('user_name', 'Admin')
+        
         db.session.commit()
         
         create_notification(
@@ -745,7 +892,11 @@ def api_create_customer():
         phone=data.get('phone'),
         location=data.get('location'),
         status="Active",  # Default for new customers
-        tags=data.get('tags', 'New')
+        tags=data.get('tags', 'New'),
+        created_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+        created_by=session.get('user_name', 'Admin'),
+        updated_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+        updated_by=session.get('user_name', 'Admin')
     )
     
     db.session.add(new_cust)
@@ -766,6 +917,8 @@ def api_update_customer_notes(id):
     data = request.get_json()
     
     customer.notes = data.get('notes', '')
+    customer.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    customer.updated_by = session.get('user_name', 'Admin')
     db.session.commit()
     
     create_notification(
@@ -837,44 +990,58 @@ def api_chat_sessions():
 
 @app.route('/api/chat/session/<int:session_id>/messages')
 def api_chat_messages(session_id):
-    session = ChatSession.query.get_or_404(session_id)
+    from flask import session as flask_session
+    chat_session = ChatSession.query.get_or_404(session_id)
     messages = [{
         'id': m.id,
         'sender_type': m.sender_type,
         'sender_name': m.sender_name,
         'text': m.text,
         'timestamp': m.timestamp
-    } for m in session.chat_messages]
+    } for m in chat_session.chat_messages]
     return jsonify({
         'session': {
-            'id': session.id,
-            'visitor_name': session.visitor_name,
-            'visitor_email': session.visitor_email,
-            'status': session.status,
-            'linked_customer_id': session.linked_customer_id,
-            'linked_inquiry_id': session.linked_inquiry_id,
-            'tags': session.tags or '',
-            'archived': session.archived,
-            'pinned': session.pinned,
+            'id': chat_session.id,
+            'visitor_name': chat_session.visitor_name,
+            'visitor_email': chat_session.visitor_email,
+            'status': chat_session.status,
+            'linked_customer_id': chat_session.linked_customer_id,
+            'linked_inquiry_id': chat_session.linked_inquiry_id,
+            'tags': chat_session.tags or '',
+            'archived': chat_session.archived,
+            'pinned': chat_session.pinned,
+            'assigned_agent_id': chat_session.assigned_agent_id,
+            'assigned_agent_name': chat_session.assigned_agent.username if chat_session.assigned_agent else None,
+            'requested_agent_id': chat_session.requested_agent_id,
+            'requested_agent_name': chat_session.requested_agent.username if chat_session.requested_agent else None,
+            'transfer_status': chat_session.transfer_status,
+            'current_user_id': flask_session.get('user_id')
         },
         'messages': messages
     })
 
 @app.route('/api/chat/session/<int:session_id>/send', methods=['POST'])
 def api_chat_send(session_id):
-    session = ChatSession.query.get_or_404(session_id)
+    chat_session = ChatSession.query.get_or_404(session_id)
     data = request.get_json()
     from datetime import datetime
+    from flask import session as flask_session
+    
+    if chat_session.assigned_agent_id and chat_session.assigned_agent_id != flask_session.get('user_id'):
+        return jsonify({'ok': False, 'error': 'Only the assigned agent can chat here.'}), 403
     
     new_msg = ChatMessage(
         session_id=session_id,
         sender_type='agent',
-        sender_name='Admin',
+        sender_name=flask_session.get('user_name', 'Admin'),
         text=data.get('text', ''),
         timestamp=datetime.now().strftime('%I:%M %p')
     )
+    if not chat_session.assigned_agent_id:
+        chat_session.assigned_agent_id = flask_session.get('user_id')
+        chat_session.status = 'agent_active'
     db.session.add(new_msg)
-    session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    chat_session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
     db.session.commit()
     
     return jsonify({'ok': True, 'message': {
@@ -887,21 +1054,23 @@ def api_chat_send(session_id):
 
 @app.route('/api/chat/session/<int:session_id>/takeover', methods=['POST'])
 def api_chat_takeover(session_id):
-    session = ChatSession.query.get_or_404(session_id)
+    chat_session = ChatSession.query.get_or_404(session_id)
     from datetime import datetime
+    from flask import session as flask_session
     
-    if session.status == 'agent_active':
-        return jsonify({'ok': False, 'error': 'Chat already taken over.'}), 400
+    if chat_session.assigned_agent_id:
+        return jsonify({'ok': False, 'error': f'Chat already assigned to {chat_session.assigned_agent.username}.'}), 400
     
-    session.status = 'agent_active'
-    session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    chat_session.assigned_agent_id = flask_session.get('user_id')
+    chat_session.status = 'agent_active'
+    chat_session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
     
     # Add system message
     system_msg = ChatMessage(
         session_id=session_id,
         sender_type='system',
         sender_name='System',
-        text='🟢 An agent has taken over this conversation.',
+        text=f'🟢 {flask_session.get("user_name", "An agent")} has taken over this conversation.',
         timestamp=datetime.now().strftime('%I:%M %p')
     )
     db.session.add(system_msg)
@@ -914,6 +1083,64 @@ def api_chat_takeover(session_id):
         'text': system_msg.text,
         'timestamp': system_msg.timestamp
     }})
+
+@app.route('/api/chat/session/<int:session_id>/request-transfer', methods=['POST'])
+def api_chat_request_transfer(session_id):
+    chat_session = ChatSession.query.get_or_404(session_id)
+    from flask import session as flask_session
+    if not chat_session.assigned_agent_id:
+        return jsonify({'ok': False, 'error': 'Chat is not assigned to anyone.'}), 400
+    
+    chat_session.requested_agent_id = flask_session.get('user_id')
+    chat_session.transfer_status = 'pending'
+    db.session.commit()
+    
+    create_notification(
+        'chat',
+        'Chat Transfer Requested',
+        f'Agent {flask_session.get("user_name")} wants to take over chat with {chat_session.visitor_name}.',
+        target_user_id=chat_session.assigned_agent_id,
+        icon='🔄'
+    )
+    
+    return jsonify({'ok': True})
+
+@app.route('/api/chat/session/<int:session_id>/handle-transfer', methods=['POST'])
+def api_chat_handle_transfer(session_id):
+    chat_session = ChatSession.query.get_or_404(session_id)
+    from flask import session as flask_session
+    data = request.get_json()
+    action = data.get('action') # 'accept' or 'reject'
+    
+    if chat_session.assigned_agent_id != flask_session.get('user_id'):
+        return jsonify({'ok': False, 'error': 'Only the owner can handle transfers.'}), 403
+        
+    if action == 'accept':
+        from datetime import datetime
+        old_agent_name = flask_session.get('user_name')
+        new_agent_id = chat_session.requested_agent_id
+        new_agent = User.query.get(new_agent_id)
+        
+        chat_session.assigned_agent_id = new_agent_id
+        chat_session.requested_agent_id = None
+        chat_session.transfer_status = 'none'
+        
+        # Add system message
+        sys_msg = ChatMessage(
+            session_id=session_id,
+            sender_type='system',
+            sender_name='System',
+            text=f'🔄 Chat transferred from {old_agent_name} to {new_agent.username if new_agent else "another agent"}.',
+            timestamp=datetime.now().strftime('%I:%M %p')
+        )
+        db.session.add(sys_msg)
+        db.session.commit()
+    else:
+        chat_session.requested_agent_id = None
+        chat_session.transfer_status = 'none'
+        db.session.commit()
+        
+    return jsonify({'ok': True})
 
 @app.route('/api/chat/session/<int:session_id>/link-customer', methods=['POST'])
 def api_chat_link_customer(session_id):
@@ -1086,7 +1313,11 @@ def add_rule():
             keywords=request.form.get('keywords'),
             score=int(request.form.get('score')),
             operation=request.form.get('operation'),
-            active=True if request.form.get('active') else False
+            active=True if request.form.get('active') else False,
+            created_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+            created_by=session.get('user_name', 'Admin'),
+            updated_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+            updated_by=session.get('user_name', 'Admin')
         )
         db.session.add(new_rule)
         db.session.commit()
@@ -1110,6 +1341,8 @@ def edit_rule(id):
         rule.score = int(request.form.get('score'))
         rule.operation = request.form.get('operation')
         rule.active = True if request.form.get('active') else False
+        rule.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+        rule.updated_by = session.get('user_name', 'Admin')
         db.session.commit()
         
         create_notification(
@@ -1134,6 +1367,8 @@ def toggle_status(id):
     rule = Rule.query.get_or_404(id)
     data = request.get_json()
     rule.active = data['active']
+    rule.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    rule.updated_by = session.get('user_name', 'Admin')
     db.session.commit()
     return jsonify({'success': True})
 
@@ -1147,7 +1382,10 @@ def handle_templates():
             message=data['message'],
             category=data['category'],
             keywords=','.join(data['keywords']), # Convert list to string
-            created_at="Just now" # You can use datetime.now()
+            created_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+            created_by=session.get('user_name', 'Admin'),
+            updated_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+            updated_by=session.get('user_name', 'Admin')
         )
         db.session.add(new_template)
         db.session.commit()
@@ -1177,6 +1415,8 @@ def handle_single_template(id):
     template.message = data['message']
     template.category = data['category']
     template.keywords = ','.join(data['keywords'])
+    template.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    template.updated_by = session.get('user_name', 'Admin')
     db.session.commit()
     
     create_notification(
@@ -1197,7 +1437,10 @@ def handle_faqs():
             question=data['question'],
             answer=data['answer'],
             category=data['category'],
-            created_at="Just now"
+            created_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+            created_by=session.get('user_name', 'Admin'),
+            updated_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+            updated_by=session.get('user_name', 'Admin')
         )
         db.session.add(new_faq)
         db.session.commit()
@@ -1226,6 +1469,8 @@ def handle_single_faq(id):
     faq.question = data['question']
     faq.answer = data['answer']
     faq.category = data['category']
+    faq.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    faq.updated_by = session.get('user_name', 'Admin')
     db.session.commit()
     
     create_notification(
@@ -1289,7 +1534,9 @@ def get_inquiries():
     inquiries = query.all()
     return jsonify([
         {'id': i.id, 'customer': i.customer, 'inquiry_type': i.inquiry_type, 
-         'status': i.status, 'assigned_rep': i.assigned_rep} for i in inquiries
+         'status': i.status, 'assigned_rep': i.assigned_rep,
+         'created_at': i.created_at, 'created_by': i.created_by,
+         'updated_at': i.updated_at, 'updated_by': i.updated_by} for i in inquiries
     ])
 
 @app.route('/inquiry/new')
@@ -1305,7 +1552,11 @@ def api_create_inquiry():
         inquiry_type=data.get('inquiry_type'),
         status=data.get('status', 'New'),
         description=data.get('description', ''),
-        notes=data.get('notes', '')
+        notes=data.get('notes', ''),
+        created_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+        created_by=session.get('user_name', 'Admin'),
+        updated_at=datetime.now().strftime('%Y-%m-%d %H:%M'),
+        updated_by=session.get('user_name', 'Admin')
     )
     db.session.add(new_inquiry)
     db.session.commit()
@@ -1336,7 +1587,8 @@ def api_update_inquiry(id):
     inquiry.assigned_rep = data.get('assigned_rep', inquiry.assigned_rep)
     inquiry.description = data.get('description', inquiry.description)
     inquiry.notes = data.get('notes', inquiry.notes)
-    
+    inquiry.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    inquiry.updated_by = session.get('user_name', 'Admin')
     db.session.commit()
     
     create_notification(
@@ -1361,7 +1613,10 @@ def template_to_dict(t):
         'category': t.category,
         'keywords': t.keywords.split(',') if t.keywords else [],
         'usageCount': t.usage_count,
-        'createdAt': t.created_at
+        'created_at': t.created_at,
+        'created_by': t.created_by,
+        'updated_at': t.updated_at,
+        'updated_by': t.updated_by
     }
 
 def faq_to_dict(f):
@@ -1371,7 +1626,10 @@ def faq_to_dict(f):
         'answer': f.answer,
         'category': f.category,
         'clickCount': f.click_count,
-        'createdAt': f.created_at
+        'created_at': f.created_at,
+        'created_by': f.created_by,
+        'updated_at': f.updated_at,
+        'updated_by': f.updated_by
     }
 
 # --- 4. ANNOUNCEMENT CRUD API ---

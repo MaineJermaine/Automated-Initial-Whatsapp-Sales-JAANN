@@ -17,6 +17,9 @@
         <a href="/history" class="nav-link nav-history internal-link">Chat History</a>
         <a href="/repository" class="nav-link nav-repository internal-link">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring internal-link">Lead Scoring</a>
+        {% if session.get('user_role') == 'super_admin' %}
+        <a href="/admin/create-account" class="nav-link nav-admin internal-link">Manage Accounts</a>
+        {% endif %}
 
         <!-- Sidebar Footer -->
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">

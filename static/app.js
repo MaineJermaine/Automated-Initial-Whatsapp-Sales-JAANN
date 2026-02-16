@@ -339,7 +339,12 @@ async function refreshInquiryTable() {
         tbody.innerHTML = data.map(i => `
             <tr>
                 <td>${i.id}</td>
-                <td><b>${i.customer}</b></td>
+                <td>
+                    <b>${i.customer}</b>
+                    <div class="text-muted" style="font-size:0.7rem;">
+                        Last updated by ${i.updated_by || 'System'} at ${i.updated_at || 'Recently'}
+                    </div>
+                </td>
                 <td>${i.inquiry_type}</td>
                 <td><span class="badge rounded-pill bg-info-subtle text-dark">${i.status}</span></td>
                 <td>${i.assigned_rep}</td>
