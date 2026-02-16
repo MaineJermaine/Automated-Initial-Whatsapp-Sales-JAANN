@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, m
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import json
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
@@ -407,6 +408,20 @@ with app.app_context():
     seed_chat_data()
 
 @app.context_processor
+def inject_pending_counts():
+    if not session.get('logged_in'): 
+        return {}
+    
+    pending_count = 0
+    if session.get('user_role') == 'super_admin':
+        try:
+            pending_count = PromotionRequest.query.filter_by(status='pending').count()
+        except:
+            pending_count = 0
+            
+    return dict(pending_promotion_count=pending_count)
+
+@app.context_processor
 def inject_search_data():
     # 1. Fetch all data from your SQLite tables
     customers = Customer.query.all()
@@ -677,9 +692,6 @@ def admin_edit_account(user_id):
                 # Check if request already exists
                 existing_req = PromotionRequest.query.filter_by(target_user_id=user.id, status='pending').first()
                 if not existing_req:
-                    import json
-                    from datetime import datetime
-                    
                     # Create request
                     req = PromotionRequest(
                         target_user_id=user.id,
@@ -1079,6 +1091,22 @@ def customer_profile(id):
     users = User.query.all()
     return render_template('customer_details.html', c=customer, tag_colors=tag_colors, users=users)
 
+@app.route('/api/customer/<int:id>')
+def api_get_customer(id):
+    customer = Customer.query.get_or_404(id)
+    return jsonify({
+        'id': customer.id,
+        'name': customer.name,
+        'email': customer.email,
+        'phone': customer.phone,
+        'location': customer.location,
+        'notes': customer.notes,
+        'tags': customer.tags,
+        'assigned_staff': customer.assigned_staff or "Jayden Ng",
+        'created_at': customer.created_at,
+        'updated_at': customer.updated_at
+    })
+
 @app.route('/customer/<int:id>/edit', methods=['GET', 'POST'])
 def edit_customer(id):
     customer = Customer.query.get_or_404(id)
@@ -1273,6 +1301,38 @@ def visitor_profile(session_id):
     mock_phone = f"+60 12-{ (session_id * 12345 % 900) + 100 } { (session_id * 6789) % 9000 + 1000 }"
     return render_template('visitor_profile.html', session=chat_session, visitor_phone=mock_phone)
 
+@app.route('/api/chat/session/<int:session_id>/profile')
+def api_visitor_profile(session_id):
+    chat_session = ChatSession.query.get_or_404(session_id)
+    mock_phone = f"+60 12-{ (session_id * 12345 % 900) + 100 } { (session_id * 6789) % 9000 + 1000 }"
+    
+    customer_data = None
+    if chat_session.linked_customer_id:
+        c = chat_session.linked_customer
+        customer_data = {
+            'id': c.id,
+            'name': c.name,
+            'email': c.email,
+            'phone': c.phone,
+            'location': c.location,
+            'notes': c.notes,
+            'tags': c.tags,
+            'assigned_staff': c.assigned_staff or "Jayden Ng"
+        }
+
+    return jsonify({
+        'session': {
+            'id': chat_session.id,
+            'visitor_name': chat_session.visitor_name,
+            'visitor_email': chat_session.visitor_email,
+            'visitor_phone': mock_phone,
+            'linked_customer_id': chat_session.linked_customer_id,
+            'updated_at': chat_session.updated_at,
+            'discovery_channel': 'Direct Visit'
+        },
+        'customer': customer_data
+    })
+
 @app.route('/api/chat/session/<int:session_id>/become-customer', methods=['POST'])
 def api_promote_to_customer(session_id):
     chat_session = ChatSession.query.get_or_404(session_id)
@@ -1348,9 +1408,11 @@ def api_chat_messages(session_id):
             'pinned': chat_session.pinned,
             'assigned_agent_id': chat_session.assigned_agent_id,
             'assigned_agent_name': chat_session.assigned_agent.name if chat_session.assigned_agent else None,
+            'assigned_agent_pic': chat_session.assigned_agent.profile_picture if chat_session.assigned_agent else None,
             'requested_agent_id': chat_session.requested_agent_id,
             'requested_agent_name': chat_session.requested_agent.name if chat_session.requested_agent else None,
             'transfer_status': chat_session.transfer_status,
+            'linked_customer_id': chat_session.linked_customer_id,
             'current_user_id': flask_session.get('user_id')
         },
         'messages': messages
@@ -1997,6 +2059,15 @@ def get_inquiries():
             else:
                 user_display = inquiry.assigned_rep
 
+        rep_pic = None
+        if user:
+            rep_pic = user.profile_picture
+        elif inquiry.assigned_rep:
+            # Try to find user by name if username match failed (for old data)
+            alt_user = User.query.filter_by(name=inquiry.assigned_rep).first()
+            if alt_user:
+                rep_pic = alt_user.profile_picture
+
         data.append({
             'id': inquiry.id,
             'customer': inquiry.customer,
@@ -2005,6 +2076,8 @@ def get_inquiries():
             'status': inquiry.status,
             'assigned_rep': user_display,
             'rep_username': inquiry.assigned_rep,
+            'rep_id': user.id if user else None,
+            'rep_pic': rep_pic,
             'created_at': inquiry.created_at,
             'created_by': inquiry.created_by,
             'updated_at': inquiry.updated_at,

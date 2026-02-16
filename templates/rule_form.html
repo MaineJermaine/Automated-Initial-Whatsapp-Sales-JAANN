@@ -22,7 +22,12 @@
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring active">Lead Scoring</a>
         {% if session.get('user_role') == 'super_admin' %}
-        <a href="/admin/create-account" class="nav-link nav-admin">Manage Accounts</a>
+        <a href="/admin/create-account" class="nav-link nav-admin">
+            Manage Accounts
+            {% if pending_promotion_count and pending_promotion_count > 0 %}
+            <span class="badge bg-danger ms-2" style="font-size: 0.7em;">!</span>
+            {% endif %}
+        </a>
         {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">

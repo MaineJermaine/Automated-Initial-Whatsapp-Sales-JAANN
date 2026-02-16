@@ -18,7 +18,12 @@
         <a href="/repository" class="nav-link nav-repository internal-link">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring internal-link">Lead Scoring</a>
         {% if session.get('user_role') in ['super_admin', 'admin'] %}
-        <a href="/admin/create-account" class="nav-link nav-admin internal-link">Manage Accounts</a>
+        <a href="/admin/create-account" class="nav-link nav-admin internal-link">
+            Manage Accounts
+            {% if pending_promotion_count and pending_promotion_count > 0 %}
+            <span class="badge bg-danger ms-2" style="font-size: 0.7em;">!</span>
+            {% endif %}
+        </a>
         {% endif %}
 
         <!-- Sidebar Footer -->

@@ -776,7 +776,12 @@
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
         {% if session.get('user_role') in ['super_admin', 'admin'] %}
-        <a href="/admin/create-account" class="nav-link nav-admin">Manage Accounts</a>
+        <a href="/admin/create-account" class="nav-link nav-admin">
+            Manage Accounts
+            {% if pending_promotion_count and pending_promotion_count > 0 %}
+            <span class="badge bg-danger ms-2" style="font-size: 0.7em;">!</span>
+            {% endif %}
+        </a>
         {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
@@ -872,8 +877,7 @@
                             <span
                                 class="chat-status-dot {% if s.status == 'bot' %}dot-bot{% elif s.status == 'agent_active' %}dot-agent{% else %}dot-closed{% endif %}"></span>
                             {% if s.pinned %}<span class="pin-icon">📌</span>{% endif %}
-                            <span class="name-text"
-                                onclick="event.stopPropagation(); window.location.href='/visitor-profile/{{ s.id }}'"
+                            <span class="name-text" onclick="event.stopPropagation(); showVisitorProfile({{ s.id }})"
                                 style="cursor:pointer; text-decoration:underline;">{{ s.visitor_name }}</span>
                             {% if s.is_lead %}
                             <span class="keyword-flag"> ⚡ Lead ({{ s.calculated_score | int }})</span>
@@ -906,6 +910,16 @@
                 <div class="chat-header-bar" id="chatHeaderBar">
                     <div class="chat-header-info">
                         <div class="chat-header-avatar" id="chatAvatar"></div>
+                        <div id="agentAvatarContainer"
+                            style="display:none; margin-left:-18px; position:relative; z-index:2; cursor:pointer;"
+                            onclick="if(currentAssignedAgentId) showAgentProfile(currentAssignedAgentId)"
+                            title="View profile">
+                            <img id="agentAvatarImg" src=""
+                                style="width:40px; height:40px; border-radius:12px; border:2px solid white; object-fit:cover;">
+                            <div id="agentAvatarInitials"
+                                style="width:40px; height:40px; border-radius:12px; border:2px solid white; background:var(--blue); color:white; display:none; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem;">
+                            </div>
+                        </div>
                         <div>
                             <div class="chat-header-name">
                                 <a id="chatHeaderName" href="#" style="color:inherit; text-decoration:none;"></a>
@@ -1105,6 +1119,7 @@
         // ===== STATE =====
         let currentSessionId = null;
         let currentSessionStatus = null;
+        let currentAssignedAgentId = null; // Added this line
         let currentSessionTags = [];
         const keywords = window.ruleKeywords || [];
         const currentView = '{{ current_view }}';
@@ -1218,8 +1233,8 @@
 
             const menu = document.getElementById('ctxMenu');
             menu.innerHTML = `
-                <div class="ctx-menu-item" onclick="window.location.href='/visitor-profile/${sessionId}'">
-                    👤 View Profile
+                <div class="ctx-menu-item" onclick="showVisitorProfile(${sessionId})">
+                    <span class="me-2">👤</span> View Full Profile
                 </div>
                 <div class="ctx-menu-divider"></div>
                 <div class="ctx-menu-item" onclick="pinChat(${sessionId}, ${!isPinned})">
@@ -1303,6 +1318,7 @@
             const res = await fetch(`/api/chat/session/${sessionId}/messages`);
             const data = await res.json();
             currentSessionStatus = data.session.status;
+            currentAssignedAgentId = data.session.assigned_agent_id;
 
             // Parse tags
             currentSessionTags = (data.session.tags || '').split(',').filter(t => t.trim());
@@ -1315,8 +1331,43 @@
             document.getElementById('chatAvatar').textContent = initials.toUpperCase();
             const headerNameLink = document.getElementById('chatHeaderName');
             headerNameLink.textContent = name;
-            headerNameLink.href = `/visitor-profile/${sessionId}`;
-            headerNameLink.style.textDecoration = 'underline';
+            headerNameLink.onclick = (e) => {
+                e.preventDefault();
+                if (data.session.linked_customer_id) {
+                    window.location.href = '/customer/' + data.session.linked_customer_id;
+                } else {
+                    alert('No customer linked to this session.');
+                }
+            };
+            document.getElementById('chatAvatar').onclick = headerNameLink.onclick;
+            document.getElementById('chatAvatar').style.cursor = 'pointer';
+            headerNameLink.style.textDecoration = 'none';
+
+            // Agent Avatar Update
+            const agentAvatarContainer = document.getElementById('agentAvatarContainer');
+            const agentAvatarImg = document.getElementById('agentAvatarImg');
+            const agentAvatarInitials = document.getElementById('agentAvatarInitials');
+
+            if (data.session.assigned_agent_id) {
+                agentAvatarContainer.style.display = 'block';
+                if (data.session.assigned_agent_pic) {
+                    let picUrl = data.session.assigned_agent_pic;
+                    if (!picUrl.startsWith('http')) {
+                        picUrl = `/static/uploads/${picUrl}`;
+                    }
+                    agentAvatarImg.src = picUrl;
+                    agentAvatarImg.style.display = 'block';
+                    agentAvatarInitials.style.display = 'none';
+                } else {
+                    const agentParts = data.session.assigned_agent_name.trim().split(' ');
+                    const agentInitials = agentParts[0][0] + (agentParts.length > 1 ? agentParts[agentParts.length - 1][0] : '');
+                    agentAvatarInitials.textContent = agentInitials.toUpperCase();
+                    agentAvatarInitials.style.display = 'flex';
+                    agentAvatarImg.style.display = 'none';
+                }
+            } else {
+                agentAvatarContainer.style.display = 'none';
+            }
 
             // Ownership & Transfer Logic
             const actionsDiv = document.getElementById('transferActions');
@@ -2043,7 +2094,274 @@
                 item.style.display = (name.includes(q) || preview.includes(q) || tags.includes(q)) ? '' : 'none';
             });
         }
+        async function showAgentProfile(userId) {
+            try {
+                const res = await fetch(`/api/admin/user/${userId}`);
+                if (!res.ok) throw new Error('Failed to fetch user');
+                const user = await res.json();
+
+                document.getElementById('profName').textContent = user.name;
+                document.getElementById('profUser').textContent = '@' + user.username;
+                document.getElementById('profRole').textContent = user.role.replace('_', ' ').toUpperCase();
+                document.getElementById('profBio').textContent = user.bio || 'No bio available.';
+
+                let picUrl = user.profile_picture;
+                if (picUrl) {
+                    if (!picUrl.startsWith('http')) picUrl = `/static/uploads/${picUrl}`;
+                    document.getElementById('profPic').src = picUrl;
+                    document.getElementById('profPic').style.display = 'block';
+                    document.getElementById('profInitials').style.display = 'none';
+                } else {
+                    document.getElementById('profInitials').textContent = user.name[0].toUpperCase();
+                    document.getElementById('profInitials').style.display = 'flex';
+                    document.getElementById('profPic').style.display = 'none';
+                }
+
+                const modal = new bootstrap.Modal(document.getElementById('agentProfileModal'));
+                modal.show();
+            } catch (err) {
+                console.error(err);
+                alert('Could not load agent profile.');
+            }
+        }
+        async function showVisitorProfile(sessionId) {
+            try {
+                const res = await fetch(`/api/chat/session/${sessionId}/profile`);
+                if (!res.ok) throw new Error('Failed to fetch profile');
+                const data = await res.json();
+                const s = data.session;
+                const c = data.customer;
+
+                // Set Name & ID
+                document.getElementById('vpName').textContent = s.visitor_name;
+                document.getElementById('vpID').textContent = 'EXT-' + String(s.id).padStart(6, '0');
+
+                // Initials
+                const parts = s.visitor_name.trim().split(' ');
+                const initials = parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '');
+                document.getElementById('vpInitials').textContent = initials.toUpperCase();
+
+                // Details
+                document.getElementById('vpEmail').textContent = s.visitor_email || 'Not Provided';
+                document.getElementById('vpPhone').textContent = s.visitor_phone || 'Not Provided';
+                document.getElementById('vpChannel').textContent = s.discovery_channel || 'Direct Visit';
+                document.getElementById('vpLast').textContent = s.updated_at || 'Recently';
+
+                // Customer Section Visibility
+                const custSection = document.getElementById('vpCustomerSection');
+                const btnContainer = document.getElementById('vpBtnBecome');
+                const btnReal = document.getElementById('vpBtnBecomeReal');
+
+                if (c) {
+                    custSection.style.display = 'block';
+                    btnContainer.style.display = 'none';
+                    document.getElementById('vpCustID').textContent = 'CUS-' + String(c.id).padStart(6, '0');
+                    document.getElementById('vpLoc').textContent = c.location || 'Singapore';
+                    document.getElementById('vpStaff').textContent = c.assigned_staff;
+                    document.getElementById('vpNotes').textContent = c.notes || 'No internal notes available.';
+
+                    // Tags
+                    const tagBox = document.getElementById('vpTags');
+                    tagBox.innerHTML = '';
+                    if (c.tags) {
+                        c.tags.split(',').forEach(tag => {
+                            const span = document.createElement('span');
+                            span.className = 'badge rounded-pill bg-light text-dark border me-1 px-3 py-1';
+                            span.style.fontSize = '0.7rem';
+                            span.textContent = tag.trim();
+                            tagBox.appendChild(span);
+                        });
+                    } else {
+                        tagBox.innerHTML = '<span class="text-muted small">No tags</span>';
+                    }
+                } else {
+                    custSection.style.display = 'none';
+                    btnContainer.style.display = 'block';
+                    btnReal.onclick = () => listAsCustomerInModal(s.id);
+                    btnReal.disabled = false;
+                    btnReal.innerHTML = `<span class="fs-4">✨</span>
+                                    <span class="fw-bold small">Promote to Customer</span>
+                                    <span class="text-muted" style="font-size: 0.65rem;">Add to your permanent CRM directory</span>`;
+                }
+
+                const modal = new bootstrap.Modal(document.getElementById('visitorProfileModal'));
+                modal.show();
+            } catch (err) {
+                console.error(err);
+                alert('Could not load profile.');
+            }
+        }
+
+        async function listAsCustomerInModal(sessionId) {
+            const btn = document.getElementById('vpBtnBecomeReal');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm mb-2"></span><span class="fw-bold small">Processing...</span>';
+
+            try {
+                const res = await fetch(`/api/chat/session/${sessionId}/become-customer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    // Success! 
+                    bootstrap.Modal.getInstance(document.getElementById('visitorProfileModal')).hide();
+                    // Slight delay for smoothness
+                    setTimeout(() => {
+                        showVisitorProfile(sessionId);
+                        selectChat(sessionId);
+                    }, 400);
+                } else {
+                    alert('Error: ' + data.error);
+                    btn.disabled = false;
+                    btn.innerHTML = `<span class="fs-4">✨</span><span class="fw-bold small">Promote to Customer</span>`;
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Network error.');
+                btn.disabled = false;
+                btn.innerHTML = `<span class="fs-4">✨</span><span class="fw-bold small">Promote to Customer</span>`;
+            }
+        }
+
     </script>
+
+    <!-- Visitor/Customer Profile Modal -->
+    <div class="modal fade" id="visitorProfileModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 24px; overflow: hidden;">
+                <div class="modal-header border-0 pb-0 pt-4 px-4">
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="text-center mb-4">
+                        <div class="d-flex justify-content-center mb-3">
+                            <div
+                                style="width: 100px; height: 100px; border-radius: 35px; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 700; color: var(--blue); box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 4px solid white;">
+                                <div id="vpInitials"></div>
+                            </div>
+                        </div>
+                        <h3 id="vpName" class="fw-bold mb-1"></h3>
+                        <p id="vpID" class="text-muted small fw-bold mb-2"></p>
+                        <span class="badge rounded-pill bg-light border px-3 py-1 mb-4"
+                            style="font-size: 0.7rem; color: #000000;">
+                            External Customer
+                        </span>
+                    </div>
+
+                    <div class="row g-4">
+                        <!-- Visitor Details Column -->
+                        <div class="col-md-6">
+                            <h6 class="fw-bold mb-3 text-uppercase"
+                                style="font-size: 0.75rem; color: #64748b; letter-spacing: 0.05em;">Visitor Details</h6>
+                            <div class="space-y-3">
+                                <div class="p-3 border rounded-4 bg-light/50 mb-2">
+                                    <label class="d-block small text-muted text-uppercase fw-bold mb-1"
+                                        style="font-size: 0.6rem;">Email</label>
+                                    <span id="vpEmail" class="small d-block text-truncate"></span>
+                                </div>
+                                <div class="p-3 border rounded-4 bg-light/50 mb-2">
+                                    <label class="d-block small text-muted text-uppercase fw-bold mb-1"
+                                        style="font-size: 0.6rem;">Phone</label>
+                                    <span id="vpPhone" class="small d-block"></span>
+                                </div>
+                                <div class="p-3 border rounded-4 bg-light/50 mb-2">
+                                    <label class="d-block small text-muted text-uppercase fw-bold mb-1"
+                                        style="font-size: 0.6rem;">Discovery Channel</label>
+                                    <span id="vpChannel" class="small d-block"></span>
+                                </div>
+                                <div class="p-3 border rounded-4 bg-light/50">
+                                    <label class="d-block small text-muted text-uppercase fw-bold mb-1"
+                                        style="font-size: 0.6rem;">Last Active</label>
+                                    <span id="vpLast" class="small d-block"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Customer Info Column (Conditional) -->
+                        <div class="col-md-6">
+                            <div id="vpCustomerSection">
+                                <h6 class="fw-bold mb-3 text-uppercase"
+                                    style="font-size: 0.75rem; color: #64748b; letter-spacing: 0.05em;">Linked Customer
+                                    Profile</h6>
+                                <div class="p-3 border border-primary/20 rounded-4 bg-primary/5 mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span id="vpCustID" class="badge bg-primary rounded-pill small"></span>
+                                        <span id="vpLoc" class="small text-muted"></span>
+                                    </div>
+                                    <label class="d-block small text-muted text-uppercase fw-bold mb-1"
+                                        style="font-size: 0.6rem;">Assigned Staff</label>
+                                    <span id="vpStaff" class="small fw-bold d-block mb-2"></span>
+
+                                    <label class="d-block small text-muted text-uppercase fw-bold mb-1"
+                                        style="font-size: 0.6rem;">Tags</label>
+                                    <div id="vpTags" class="mb-2"></div>
+
+                                    <label class="d-block small text-muted text-uppercase fw-bold mb-1"
+                                        style="font-size: 0.6rem;">Internal Notes</label>
+                                    <p id="vpNotes" class="small text-secondary mb-0" style="line-height: 1.5;"></p>
+                                </div>
+                            </div>
+
+                            <div id="vpBtnBecome">
+                                <h6 class="fw-bold mb-3 text-uppercase"
+                                    style="font-size: 0.75rem; color: #64748b; letter-spacing: 0.05em;">CRM Actions</h6>
+                                <button id="vpBtnBecomeReal" onclick=""
+                                    class="btn btn-outline-primary w-100 py-3 rounded-4 d-flex flex-column align-items-center justify-content-center gap-1 border-dashed">
+                                    <span class="fs-4">✨</span>
+                                    <span class="fw-bold small">Promote to Customer</span>
+                                    <span class="text-muted" style="font-size: 0.65rem;">Add to your permanent CRM
+                                        directory</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 p-4">
+                    <button type="button" class="btn btn-blue w-100 py-3 fw-bold" data-bs-dismiss="modal"
+                        style="border-radius: 16px;">Close Profile</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Profile Modal -->
+    <div class="modal fade" id="agentProfileModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 20px; overflow: hidden;">
+                <div class="modal-header border-0 pb-0 pt-4 px-4">
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4 text-center">
+                    <div class="mb-4 d-flex justify-content-center">
+                        <div
+                            style="width: 100px; height: 100px; border-radius: 30px; overflow: hidden; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+                            <img id="profPic" src=""
+                                style="width: 100%; height: 100%; object-fit: cover; display: none;">
+                            <div id="profInitials"
+                                style="width: 100%; height: 100%; background: var(--blue); color: white; display: none; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 700;">
+                            </div>
+                        </div>
+                    </div>
+                    <h3 id="profName" class="fw-bold mb-1"></h3>
+                    <p id="profUser" class="text-primary fw-600 mb-3"></p>
+                    <div class="mb-4">
+                        <span id="profRole" class="badge rounded-pill bg-light text-dark px-3 py-2 border shadow-sm"
+                            style="font-size: 0.75rem; letter-spacing: 0.05em;"></span>
+                    </div>
+                    <div class="p-3 bg-light rounded-4 text-start mb-2" style="border: 1px dashed #ced4da;">
+                        <label class="small text-muted fw-bold mb-1 d-block text-uppercase"
+                            style="font-size: 0.65rem;">Biography</label>
+                        <p id="profBio" class="small mb-0 text-secondary" style="line-height: 1.6;"></p>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 p-4">
+                    <button type="button" class="btn btn-blue w-100 py-2 fw-bold" data-bs-dismiss="modal"
+                        style="border-radius: 12px;">Close Profile</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Forced Transfer Modal (Super Admin) -->
     <div class="modal fade" id="adminTransferModal" tabindex="-1" aria-hidden="true">
