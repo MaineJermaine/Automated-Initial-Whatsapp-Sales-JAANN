@@ -1505,14 +1505,24 @@ def auto_reply():
             matched_replies.append(t.message)
             t.usage_count += 1 # Increment usage
             
+    # 2. Search for Match in FAQs
+    if not matched_replies:
+        faqs = FAQ.query.all()
+        for f in faqs:
+            question_words = f.question.lower().split()
+            if any(word in user_msg for word in question_words):
+                matched_replies.append(f.answer)
+                f.click_count += 1 # Increment click count
+    
     if matched_replies:
         db.session.commit()
+        source = "template" if any(t.message in matched_replies for t in templates) else "faq"
         return jsonify({
-            "source": "template",
+            "source": source,
             "replies": matched_replies
         })
     
-    # 2. Fallback to AI (Mocked for now)
+    # 3. Fallback to AI (Mocked for now)
     return jsonify({
         "source": "ai",
         "replies": ["I see you're asking about that. Our AI agent is currently processing your request... (Integration Placeholder)"]

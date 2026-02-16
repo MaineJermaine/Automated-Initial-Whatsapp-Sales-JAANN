@@ -2,15 +2,64 @@
 let templates = [];
 let faqs = [];
 let currentKeywords = [];
+let faqToggling = false; // Prevent rapid toggling
+let faqSectionOpen = false; // Track if FAQ section should be open
+let toggleCallCount = 0; // Count how many times toggle is called
 
-document.addEventListener('DOMContentLoaded', function () {
+function initializeApp() {
     // Only run this logic if we are on the templates page
     if (document.body.id !== 'page-templates') return;
 
+    console.log('Initializing Auto-Reply Template Manager');
     loadTemplates();
     loadFAQs();
     initializeTabs();
-});
+    initializeStatCards();
+    setupFAQToggle();
+    
+    // Periodic enforcement of FAQ state (every 500ms)
+    setInterval(() => {
+        if (faqSectionOpen) {
+            // Only log when state is open to reduce console spam
+            const section = document.getElementById('chatFaqSection');
+            if (section && section.style.display === 'none') {
+                console.warn('FAQ section closed unexpectedly! Reopening...');
+            }
+        }
+        enforceFAQSectionState();
+    }, 500);
+}
+
+function setupFAQToggle() {
+    const btn = document.getElementById('showFaqButton');
+    const hideBtn = document.querySelector('[id="chatFaqSection"] button.btn-link');
+    
+    if (btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            console.log('Show FAQ button clicked');
+            toggleChatFAQ(null);
+        });
+    }
+    
+    if (hideBtn) {
+        hideBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            console.log('Hide FAQ button clicked');
+            toggleChatFAQ(null);
+        });
+    }
+}
+
+// Run initialization when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+    // If script is loaded at the end of body, DOM is already ready
+    initializeApp();
+}
 
 // --- TABS LOGIC ---
 function initializeTabs() {
@@ -19,7 +68,7 @@ function initializeTabs() {
             // Remove active class from all buttons and contents
             document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active', 'text-primary', 'fw-bold'));
             document.querySelectorAll('.tab-button').forEach(b => b.classList.add('text-muted'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(c => c.classList.remove('active'));
 
             // Activate clicked tab
             btn.classList.add('active', 'fw-bold');
@@ -40,18 +89,104 @@ function initializeTabs() {
     document.getElementById('faqForm')?.addEventListener('submit', handleFAQSubmit);
 }
 
+// --- TOAST NOTIFICATIONS ---
+function showToast(message, type = 'success', duration = 3000) {
+    console.log('showToast called:', message, type);
+    
+    const container = document.getElementById('toastContainer');
+    console.log('Toast container:', container);
+    
+    if (!container) {
+        console.error('Toast container not found!');
+        return;
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const icons = {
+        'success': '✓',
+        'error': '✕',
+        'info': 'ℹ',
+        'warning': '⚠'
+    };
+    
+    toast.innerHTML = `
+        <div class="toast-message">
+            <span class="toast-icon">${icons[type] || icons['info']}</span>
+            <span class="toast-text">${message}</span>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    container.appendChild(toast);
+    console.log('Toast appended to container');
+    
+    // Auto remove after duration
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.classList.add('removing');
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, duration);
+}
+
+// --- STAT CARDS INTERACTION ---
+function initializeStatCards() {
+    const statCards = document.querySelectorAll('.row.g-4 .card');
+    
+    statCards.forEach((card, index) => {
+        card.addEventListener('click', () => {
+            if (index === 0) {
+                // Click on Total Templates card -> go to templates tab
+                const templatesBtn = document.querySelector('[data-tab="templates"]');
+                if (templatesBtn) templatesBtn.click();
+                console.log('Navigating to Templates tab');
+            } else if (index === 1) {
+                // Click on Total FAQs card -> go to FAQs tab
+                const faqsBtn = document.querySelector('[data-tab="faqs"]');
+                if (faqsBtn) faqsBtn.click();
+                console.log('Navigating to FAQs tab');
+            } else if (index === 2) {
+                // Click on Total Usage card -> scroll to top and highlight
+                document.querySelector('.main').scrollTop = 0;
+                console.log('Showing usage stats');
+            }
+        });
+        
+        // Add hover effect feedback
+        card.addEventListener('mouseenter', () => {
+            card.style.cursor = 'pointer';
+        });
+    });
+}
+
 // --- TEMPLATE MANAGEMENT ---
 async function loadTemplates() {
-    const res = await fetch('/api/templates');
-    templates = await res.json();
+    try {
+        const res = await fetch('/api/templates');
+        if (!res.ok) throw new Error('Failed to fetch templates');
+        templates = await res.json();
+    } catch (error) {
+        console.error('Error loading templates:', error);
+        templates = [];
+    }
     renderTemplates();
     updateStats();
 }
 
 function renderTemplates() {
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    const cat = document.getElementById('categoryFilter').value;
+    const searchInput = document.getElementById('searchInput');
+    const categoryFilter = document.getElementById('categoryFilter');
     const container = document.getElementById('templateList');
+    
+    if (!container) {
+        console.error('Template list container not found');
+        return;
+    }
+    
+    const search = searchInput ? searchInput.value.toLowerCase() : '';
+    const cat = categoryFilter ? categoryFilter.value : '';
 
     const filtered = templates.filter(t => {
         const matchSearch = t.title.toLowerCase().includes(search) || t.message.toLowerCase().includes(search);
@@ -85,17 +220,70 @@ function renderTemplates() {
 
 // --- FAQ MANAGEMENT ---
 async function loadFAQs() {
-    const res = await fetch('/api/faqs');
-    faqs = await res.json();
+    try {
+        const res = await fetch('/api/faqs');
+        if (!res.ok) throw new Error('Failed to fetch FAQs');
+        faqs = await res.json();
+        console.log('FAQs loaded successfully:', faqs);
+    } catch (error) {
+        console.error('Error loading FAQs:', error);
+        faqs = [];
+    }
     renderFAQs();
-    renderChatFAQs(); // Update chat view too
+    // Only try to render chat FAQs if the containers exist
+    try {
+        if (document.getElementById('chatFaqList') && document.getElementById('chatFaqFilters')) {
+            console.log('Chat FAQ containers exist, rendering...');
+            renderChatFAQs();
+        } else {
+            console.log('Chat FAQ containers not visible yet, skipping render');
+        }
+    } catch (error) {
+        console.error('Error rendering chat FAQs:', error);
+    }
     updateStats();
+    
+    // Enforce the FAQ section state
+    enforceFAQSectionState();
+}
+
+function enforceFAQSectionState() {
+    const section = document.getElementById('chatFaqSection');
+    const btn = document.getElementById('showFaqButton');
+    
+    if (!section || !btn) {
+        return;
+    }
+    
+    const actualDisplay = section.style.display;
+    const shouldBeOpen = faqSectionOpen;
+    
+    // If section should be open but is closed, open it
+    if (shouldBeOpen && actualDisplay === 'none') {
+        console.warn('ENFORCEMENT: FAQ should be OPEN but is CLOSED! Fixing...');
+        section.style.display = 'block';
+        btn.style.display = 'none';
+    }
+    // If section should be closed but is open, close it  
+    else if (!shouldBeOpen && actualDisplay !== 'none') {
+        console.log('ENFORCEMENT: FAQ should be CLOSED but is OPEN. Closing...');
+        section.style.display = 'none';
+        btn.style.display = 'block';
+    }
 }
 
 function renderFAQs() {
-    const search = document.getElementById('faqSearchInput').value.toLowerCase();
-    const cat = document.getElementById('faqCategoryFilter').value;
+    const faqSearchInput = document.getElementById('faqSearchInput');
+    const faqCategoryFilter = document.getElementById('faqCategoryFilter');
     const container = document.getElementById('faqList');
+    
+    if (!container) {
+        console.error('FAQ list container not found');
+        return;
+    }
+    
+    const search = faqSearchInput ? faqSearchInput.value.toLowerCase() : '';
+    const cat = faqCategoryFilter ? faqCategoryFilter.value : '';
 
     const filtered = faqs.filter(f => {
         const matchSearch = f.question.toLowerCase().includes(search);
@@ -173,8 +361,9 @@ function removeKeyword(k) {
 async function handleTemplateSubmit(e) {
     e.preventDefault();
     const id = document.getElementById('templateId').value;
+    const title = document.getElementById('templateTitle').value;
     const data = {
-        title: document.getElementById('templateTitle').value,
+        title: title,
         category: document.getElementById('templateCategory').value,
         message: document.getElementById('templateMessage').value,
         keywords: currentKeywords
@@ -182,6 +371,7 @@ async function handleTemplateSubmit(e) {
 
     const url = id ? `/api/templates/${id}` : '/api/templates';
     const method = id ? 'PUT' : 'POST';
+    const isCreate = !id;
 
     await fetch(url, {
         method: method,
@@ -191,12 +381,24 @@ async function handleTemplateSubmit(e) {
 
     closeTemplateModal();
     loadTemplates();
+    
+    // Show toast notification
+    if (isCreate) {
+        showToast(`Template "${title}" created successfully`, 'success');
+    } else {
+        showToast(`Template "${title}" updated successfully`, 'success');
+    }
 }
 
 async function deleteTemplate(id) {
     if (confirm("Delete this template?")) {
+        const template = templates.find(t => t.id === id);
+        const templateTitle = template ? template.title : 'Template';
+        
         await fetch(`/api/templates/${id}`, { method: 'DELETE' });
         loadTemplates();
+        
+        showToast(`Template "${templateTitle}" deleted successfully`, 'success');
     }
 }
 
@@ -220,23 +422,34 @@ function closeFAQModal() { document.getElementById('faqModal').style.display = '
 async function handleFAQSubmit(e) {
     e.preventDefault();
     const id = document.getElementById('faqId').value;
+    const question = document.getElementById('faqQuestion').value;
     const data = {
-        question: document.getElementById('faqQuestion').value,
+        question: question,
         answer: document.getElementById('faqAnswer').value,
         category: document.getElementById('faqCategory').value
     };
     const url = id ? `/api/faqs/${id}` : '/api/faqs';
     const method = id ? 'PUT' : 'POST';
+    const isCreate = !id;
 
     await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     closeFAQModal();
     loadFAQs();
+    
+    // Show toast notification
+    if (isCreate) {
+        showToast(`FAQ question created successfully`, 'success');
+    } else {
+        showToast(`FAQ question updated successfully`, 'success');
+    }
 }
 
 async function deleteFAQ(id) {
     if (confirm("Delete this FAQ?")) {
         await fetch(`/api/faqs/${id}`, { method: 'DELETE' });
         loadFAQs();
+        
+        showToast(`FAQ deleted successfully`, 'success');
     }
 }
 
@@ -248,54 +461,157 @@ window.deleteFAQ = deleteFAQ;
 
 // --- STATS ---
 function updateStats() {
-    document.getElementById('totalTemplates').innerText = templates.length;
-    document.getElementById('totalFAQs').innerText = faqs.length;
-
-    const tUsage = templates.reduce((acc, curr) => acc + (curr.usageCount || 0), 0);
-    const fUsage = faqs.reduce((acc, curr) => acc + (curr.clickCount || 0), 0);
-    document.getElementById('totalUsage').innerText = tUsage + fUsage;
-}
-
-// --- CHAT PREVIEW LOGIC ---
-function toggleChatFAQ() {
-    const section = document.getElementById('chatFaqSection');
-    const btn = document.getElementById('showFaqButton');
-    if (section.style.display === 'none') {
-        section.style.display = 'block';
-        btn.style.display = 'none';
-        renderChatFAQs();
+    // Safely update stats with null checks
+    const totalTemplatesEl = document.getElementById('totalTemplates');
+    const totalFAQsEl = document.getElementById('totalFAQs');
+    const totalUsageEl = document.getElementById('totalUsage');
+    
+    console.log('Updating stats - Templates:', templates.length, 'FAQs:', faqs.length);
+    
+    if (totalTemplatesEl) {
+        totalTemplatesEl.innerText = templates.length || 0;
+        console.log('Updated Total Templates to:', templates.length);
     } else {
-        section.style.display = 'none';
-        btn.style.display = 'block';
+        console.error('totalTemplates element not found');
+    }
+    
+    if (totalFAQsEl) {
+        totalFAQsEl.innerText = faqs.length || 0;
+        console.log('Updated Total FAQs to:', faqs.length);
+    } else {
+        console.error('totalFAQs element not found');
+    }
+    
+    if (totalUsageEl) {
+        const tUsage = templates.reduce((acc, curr) => acc + (curr.usageCount || 0), 0);
+        const fUsage = faqs.reduce((acc, curr) => acc + (curr.clickCount || 0), 0);
+        const totalUsage = tUsage + fUsage;
+        totalUsageEl.innerText = totalUsage || 0;
+        console.log('Updated Total Usage to:', totalUsage);
+    } else {
+        console.error('totalUsage element not found');
     }
 }
 
-function renderChatFAQs(cat = 'All') {
+// --- CHAT PREVIEW LOGIC ---
+function toggleChatFAQ(e) {
+    toggleCallCount++;
+    const callNum = toggleCallCount;
+    const timestamp = new Date().getTime();
+    
+    // Prevent event bubbling
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    
+    console.log(`[${callNum}] toggleChatFAQ called at ${timestamp}`);
+    
+    const section = document.getElementById('chatFaqSection');
+    const btn = document.getElementById('showFaqButton');
+    
+    if (!section || !btn) {
+        console.error(`[${callNum}] FAQ elements not found`);
+        return;
+    }
+    
+    const wasOpen = section.style.display === 'block';
+    console.log(`[${callNum}] wasOpen: ${wasOpen}`);
+    
+    // Force toggle directly with inline styles
+    if (wasOpen) {
+        console.log(`[${callNum}] Closing FAQ section`);
+        section.style.display = 'none !important';
+        btn.style.display = 'block !important';
+        faqSectionOpen = false;
+    } else {
+        console.log(`[${callNum}] Opening FAQ section`);
+        section.style.display = 'block !important';
+        btn.style.display = 'none !important';
+        faqSectionOpen = true;
+        
+        // Render FAQs if they exist
+        if (faqs && faqs.length > 0) {
+            console.log(`[${callNum}] Rendering FAQs`);
+            renderChatFAQs();
+        }
+    }
+}
+
+function renderChatFAQs(cat = 'All', e) {
+    if (e) e.stopPropagation();
+    
+    console.log('renderChatFAQs called with category:', cat);
+    console.log('FAQs available:', faqs);
+    
+    // Check if elements exist
+    const filterContainer = document.getElementById('chatFaqFilters');
+    const listContainer = document.getElementById('chatFaqList');
+    
+    console.log('Filter container:', filterContainer);
+    console.log('List container:', listContainer);
+    
+    if (!filterContainer || !listContainer) {
+        console.warn('Chat FAQ containers not found - elements may not be rendered yet');
+        return;
+    }
+    
+    // Guard check for faqs data
+    if (!faqs || !Array.isArray(faqs)) {
+        console.warn('FAQs data is not an array:', faqs);
+        listContainer.innerHTML = '<p class="text-muted">No FAQs available</p>';
+        return;
+    }
+    
     // 1. Render Filters
     const cats = ['All', ...new Set(faqs.map(f => f.category))];
-    document.getElementById('chatFaqFilters').innerHTML = cats.map(c => `
-        <button class="filter-btn ${c === cat ? 'active' : ''}" onclick="renderChatFAQs('${c}')">${c}</button>
+    console.log('Categories found:', cats);
+    
+    filterContainer.innerHTML = cats.map(c => `
+        <button class="filter-btn ${c === cat ? 'active' : ''}" onclick="renderChatFAQs('${c}', event); event.stopPropagation();">${c}</button>
     `).join('');
 
     // 2. Render List
-    const list = document.getElementById('chatFaqList');
     const filtered = cat === 'All' ? faqs : faqs.filter(f => f.category === cat);
+    console.log('Filtered FAQs:', filtered);
 
-    list.innerHTML = filtered.map(f => `
-        <div class="customer-faq-item" id="chat-faq-${f.id}">
-            <div class="customer-faq-question" onclick="toggleChatFAQItem(${f.id})">
-                <span>${f.question}</span>
-                <small>▼</small>
+    if (filtered.length === 0) {
+        listContainer.innerHTML = '<p class="text-muted">No FAQs in this category</p>';
+    } else {
+        listContainer.innerHTML = filtered.map(f => `
+            <div class="customer-faq-item" id="chat-faq-${f.id}" onclick="event.stopPropagation();">
+                <div class="customer-faq-question" onclick="toggleChatFAQItem(${f.id}, event)">
+                    <span>${f.question}</span>
+                    <small>▼</small>
+                </div>
+                <div class="customer-faq-answer">${f.answer}</div>
             </div>
-            <div class="customer-faq-answer">${f.answer}</div>
-        </div>
-    `).join('');
+        `).join('');
+    }
+    
+    console.log('Chat FAQs rendered successfully');
 }
 
-function toggleChatFAQItem(id) {
-    document.getElementById(`chat-faq-${id}`).classList.toggle('open');
-    // Optional: Hit API to increment click count
-    fetch(`/api/faqs/${id}/click`, { method: 'POST' });
+function toggleChatFAQItem(id, e) {
+    if (e) e.stopPropagation();
+    
+    console.log('toggleChatFAQItem called with id:', id);
+    const faqItem = document.getElementById(`chat-faq-${id}`);
+    if (!faqItem) {
+        console.error('FAQ item not found:', `chat-faq-${id}`);
+        return;
+    }
+    
+    faqItem.classList.toggle('open');
+    console.log('FAQ item toggled, now open:', faqItem.classList.contains('open'));
+    
+    // Increment click count and reload FAQ data
+    fetch(`/api/faqs/${id}/click`, { method: 'POST' }).then(() => {
+        console.log('FAQ click count incremented');
+        loadFAQs(); // Reload FAQs to update stats
+    }).catch(err => {
+        console.error('Error incrementing FAQ click count:', err);
+    });
 }
 
 async function sendMessage() {
@@ -306,16 +622,27 @@ async function sendMessage() {
     input.value = '';
     addMsg(txt, 'user');
 
-    // Send to backend
-    const res = await fetch('/api/auto-reply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: txt })
-    });
-    const data = await res.json();
+    try {
+        // Send to backend
+        const res = await fetch('/api/auto-reply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: txt })
+        });
+        const data = await res.json();
 
-    data.replies.forEach(r => addMsg(r, 'bot', data.source));
-    if (data.source === 'template') loadTemplates(); // Update stats
+        if (data.replies && data.replies.length > 0) {
+            data.replies.forEach(r => addMsg(r, 'bot', data.source));
+        } else {
+            addMsg("Sorry, I couldn't find a suitable response.", 'bot');
+        }
+        
+        // Reload templates and FAQs to update usage counts in real-time
+        await loadTemplates();
+        await loadFAQs();
+    } catch (error) {
+        addMsg("Sorry, there was an error processing your message.", 'bot');
+    }
 }
 
 function addMsg(txt, sender, source = '') {

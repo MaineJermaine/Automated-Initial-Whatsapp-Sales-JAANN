@@ -56,6 +56,9 @@
     </aside>
 
     <main class="main">
+        <!-- Toast Container -->
+        <div id="toastContainer" class="toast-container"></div>
+
         <div class="header d-flex justify-content-between align-items-center mb-4">
             <h1 class="h3 mb-0">Auto-Reply Template Manager</h1>
             <div class="search-container">
@@ -94,41 +97,42 @@
                         Preview</button></li>
             </ul>
 
-            <div class="tab-content active" id="templates-tab">
-                <div class="d-flex justify-content-between align-items-center mb-4 gap-2">
-                    <div class="d-flex gap-2 w-75">
-                        <input type="text" id="searchInput" class="form-control" placeholder="Search templates...">
-                        <select id="categoryFilter" class="form-select w-25">
-                            <option value="">All Categories</option>
-                            <option value="Greeting">Greeting</option>
-                            <option value="Information">Information</option>
-                            <option value="Sales">Sales</option>
-                            <option value="Support">Support</option>
-                        </select>
+            <div class="tab-content">
+                <div class="tab-pane active" id="templates-tab">
+                    <div class="d-flex justify-content-between align-items-center mb-4 gap-2">
+                        <div class="d-flex gap-2 w-75">
+                            <input type="text" id="searchInput" class="form-control" placeholder="Search templates...">
+                            <select id="categoryFilter" class="form-select w-25">
+                                <option value="">All Categories</option>
+                                <option value="Greeting">Greeting</option>
+                                <option value="Information">Information</option>
+                                <option value="Sales">Sales</option>
+                                <option value="Support">Support</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-blue" onclick="openTemplateModal('create')">+ Create Template</button>
                     </div>
-                    <button class="btn btn-blue" onclick="openTemplateModal('create')">+ Create Template</button>
+                    <div id="templateList" class="template-grid"></div>
                 </div>
-                <div id="templateList" class="template-grid"></div>
-            </div>
 
-            <div class="tab-content" id="faqs-tab">
-                <div class="d-flex justify-content-between align-items-center mb-4 gap-2">
-                    <div class="d-flex gap-2 w-75">
-                        <input type="text" id="faqSearchInput" class="form-control" placeholder="Search FAQs...">
-                        <select id="faqCategoryFilter" class="form-select w-25">
-                            <option value="">All Categories</option>
-                            <option value="General">General</option>
-                            <option value="Information">Information</option>
-                            <option value="Sales">Sales</option>
-                            <option value="Support">Support</option>
-                        </select>
+                <div class="tab-pane" id="faqs-tab">
+                    <div class="d-flex justify-content-between align-items-center mb-4 gap-2">
+                        <div class="d-flex gap-2 w-75">
+                            <input type="text" id="faqSearchInput" class="form-control" placeholder="Search FAQs...">
+                            <select id="faqCategoryFilter" class="form-select w-25">
+                                <option value="">All Categories</option>
+                                <option value="General">General</option>
+                                <option value="Information">Information</option>
+                                <option value="Sales">Sales</option>
+                                <option value="Support">Support</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-blue" onclick="openFAQModal('create')">+ Create FAQ</button>
                     </div>
-                    <button class="btn btn-blue" onclick="openFAQModal('create')">+ Create FAQ</button>
+                    <div id="faqList" class="faq-grid"></div>
                 </div>
-                <div id="faqList" class="faq-grid"></div>
-            </div>
 
-            <div class="tab-content" id="preview-tab">
+                <div class="tab-pane" id="preview-tab">
                 <div class="customer-preview-container border rounded p-3 bg-light">
                     <div class="chat-interface">
                         <div class="chat-container bg-white border rounded">
@@ -138,13 +142,13 @@
                                 </div>
 
                                 <button class="btn btn-sm btn-outline-primary mb-2" id="showFaqButton"
-                                    onclick="toggleChatFAQ()">Show FAQ</button>
+                                    style="cursor: pointer;">Show FAQ</button>
                                 <div class="chat-faq-section border rounded p-2 mb-2" id="chatFaqSection"
-                                    style="display:none; background:#f8f9fa;">
+                                    style="display:none; background:#f8f9fa;" onclick="event.stopPropagation();">
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <small class="fw-bold">Frequently Asked Questions</small>
                                         <button class="btn btn-sm btn-link p-0 text-decoration-none"
-                                            onclick="toggleChatFAQ()">Hide</button>
+                                            style="cursor: pointer;">Hide</button>
                                     </div>
                                     <div id="chatFaqFilters" class="d-flex gap-1 overflow-auto mb-2 pb-1"></div>
                                     <div id="chatFaqList"></div>
