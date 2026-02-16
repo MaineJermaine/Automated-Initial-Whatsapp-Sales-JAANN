@@ -212,6 +212,22 @@ def create_notification(notif_type, title, message, icon='🔔', created_by=None
     
     db.session.commit()
 
+@app.context_processor
+def inject_user_preferences():
+    theme = 'light'
+    if has_request_context() and 'user_id' in session:
+        user_id = session.get('user_id')
+        # Avoid database call on static files if possible, but for now simple query
+        user = User.query.get(user_id)
+        if user and user.preferences:
+            try:
+                import json
+                prefs = json.loads(user.preferences)
+                theme = prefs.get('theme', 'light')
+            except:
+                pass
+    return dict(current_theme=theme)
+
 # Create tables logic
 def seed_admin():
     if not User.query.filter_by(username='252499L').first():
@@ -219,7 +235,8 @@ def seed_admin():
             username='252499L', 
             password=generate_password_hash('fjr1300A15'), 
             name='Admin User', 
-            bio='System Administrator'
+            bio='System Administrator',
+            role='super_admin'
         )
         db.session.add(admin)
         db.session.commit()
@@ -1956,7 +1973,13 @@ def handle_preferences():
         if not data:
             return jsonify({'error': 'Invalid data'}), 400
         
-        user.preferences = json.dumps(data)
+        try:
+            prefs = json.loads(user.preferences) if user.preferences else {}
+        except:
+            prefs = {}
+        
+        prefs.update(data)
+        user.preferences = json.dumps(prefs)
         db.session.commit()
         return jsonify({'success': True})
     

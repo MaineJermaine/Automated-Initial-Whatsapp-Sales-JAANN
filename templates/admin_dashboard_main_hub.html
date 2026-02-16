@@ -15,7 +15,8 @@
     window.backendSearchSeed = {{ search_seed | tojson }};
 </script>
 
-<body id="page-dashboard">
+<body id="page-dashboard"
+    class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
 
     <aside class="sidebar">
         <h2>CRM Admin</h2>
@@ -30,8 +31,8 @@
         {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
-                <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
-                    id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
+                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle" id="dropdownUser1"
+                    data-bs-toggle="dropdown" aria-expanded="false">
                     <div class="avatar-circle bg-primary text-white me-2"
                         style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">
                         {% if session.get('user_pic') and 'http' in session.get('user_pic') %}
@@ -207,7 +208,7 @@
                 </div>
                 <div class="modal-body">
                     <p style="color: var(--gray); font-size: 0.85rem; margin-bottom: 16px;">Choose which stats and
-                        graphs to display on your dashboard. Your preferences are saved locally.</p>
+                        graphs to display on your dashboard. Your preferences are saved to your account.</p>
 
                     <!-- Tab Navigation -->
                     <ul class="nav nav-tabs customize-tabs mb-3" id="customizeTabs" role="tablist">

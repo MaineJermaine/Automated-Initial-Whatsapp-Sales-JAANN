@@ -14,7 +14,7 @@
 </head>
 
 
-<body id="page-scoring">
+<body id="page-scoring" class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
     <aside class="sidebar">
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
@@ -28,7 +28,7 @@
         {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
-                <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
+                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
                     id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
                     <div class="avatar-circle bg-primary text-white me-2"
                         style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">

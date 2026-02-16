@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -13,7 +13,8 @@
     window.backendSearchSeed = {{ search_seed | tojson }};
 </script>
 
-<body id="page-templates">
+<body id="page-templates"
+    class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
     <aside class="sidebar">
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
@@ -27,7 +28,7 @@
         {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
-                <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
+                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
                     id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
                     <div class="avatar-circle bg-primary text-white me-2"
                         style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">
@@ -133,40 +134,41 @@
                 </div>
 
                 <div class="tab-pane" id="preview-tab">
-                <div class="customer-preview-container border rounded p-3 bg-light">
-                    <div class="chat-interface">
-                        <div class="chat-container bg-white border rounded">
-                            <div class="chat-messages p-3" id="chatMessages" style="height: 300px; overflow-y: auto;">
-                                <div class="message-bubble bot-message bg-light p-2 rounded mb-2">
-                                    Hello! I'm your AI assistant. Ask me anything!
-                                </div>
-
-                                <button class="btn btn-sm btn-outline-primary mb-2" id="showFaqButton"
-                                    style="cursor: pointer;">Show FAQ</button>
-                                <div class="chat-faq-section border rounded p-2 mb-2" id="chatFaqSection"
-                                    style="display:none; background:#f8f9fa;" onclick="event.stopPropagation();">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <small class="fw-bold">Frequently Asked Questions</small>
-                                        <button class="btn btn-sm btn-link p-0 text-decoration-none"
-                                            style="cursor: pointer;">Hide</button>
+                    <div class="customer-preview-container border rounded p-3 bg-light">
+                        <div class="chat-interface">
+                            <div class="chat-container bg-white border rounded">
+                                <div class="chat-messages p-3" id="chatMessages"
+                                    style="height: 300px; overflow-y: auto;">
+                                    <div class="message-bubble bot-message bg-light p-2 rounded mb-2">
+                                        Hello! I'm your AI assistant. Ask me anything!
                                     </div>
-                                    <div id="chatFaqFilters" class="d-flex gap-1 overflow-auto mb-2 pb-1"></div>
-                                    <div id="chatFaqList"></div>
-                                </div>
-                            </div>
 
-                            <div class="chat-input-area p-3 border-top">
-                                <div class="input-group">
-                                    <input type="text" id="chatInput" class="form-control"
-                                        placeholder="Type a message...">
-                                    <button class="btn btn-blue" onclick="sendMessage()">Send</button>
+                                    <button class="btn btn-sm btn-outline-primary mb-2" id="showFaqButton"
+                                        style="cursor: pointer;">Show FAQ</button>
+                                    <div class="chat-faq-section border rounded p-2 mb-2" id="chatFaqSection"
+                                        style="display:none; background:#f8f9fa;" onclick="event.stopPropagation();">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <small class="fw-bold">Frequently Asked Questions</small>
+                                            <button class="btn btn-sm btn-link p-0 text-decoration-none"
+                                                style="cursor: pointer;">Hide</button>
+                                        </div>
+                                        <div id="chatFaqFilters" class="d-flex gap-1 overflow-auto mb-2 pb-1"></div>
+                                        <div id="chatFaqList"></div>
+                                    </div>
+                                </div>
+
+                                <div class="chat-input-area p-3 border-top">
+                                    <div class="input-group">
+                                        <input type="text" id="chatInput" class="form-control"
+                                            placeholder="Type a message...">
+                                        <button class="btn btn-blue" onclick="sendMessage()">Send</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
     </main>
 
     <div class="modal" id="templateModal">
@@ -248,4 +250,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
     <script src="{{ url_for('static', filename='auto_reply.js') }}"></script>
-    <!-- Confirm Overlay -->`r`n    <div id="confirmOverlay" style="display:none;"></div>`r`n</body>`r`n</html>
+    <!-- Confirm Overlay -->`r`n <div id="confirmOverlay" style="display:none;"></div>`r`n
+</body>`r`n
+
+</html>
