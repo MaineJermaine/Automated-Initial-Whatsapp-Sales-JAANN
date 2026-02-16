@@ -68,9 +68,10 @@
                     <div class="col-md-6">
                         <label class="form-label fw-bold">Assigned Rep</label>
                         <select id="rep" class="form-select">
-                            <option value="Karine">Karine</option>
-                            <option value="Winter">Winter</option>
-                            <option value="Giselle">Giselle</option>
+                            <option value="">-- Select Rep --</option>
+                            {% for u in users %}
+                            <option value="{{ u.username }}">{{ u.name }} (@{{ u.username }})</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-6">

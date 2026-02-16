@@ -57,7 +57,10 @@ class Inquiry(db.Model):
     created_by = db.Column(db.String(100))
     updated_at = db.Column(db.String(50))
     updated_by = db.Column(db.String(100))
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=True)
+    
     messages = db.relationship('Message', backref='inquiry', cascade="all, delete-orphan")
+    linked_customer = db.relationship('Customer', backref='inquiries')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -783,7 +786,8 @@ def customer_profile(id):
         'Enterprise': '#ec4899'
     }
     
-    return render_template('customer_details.html', c=customer, tag_colors=tag_colors)
+    users = User.query.all()
+    return render_template('customer_details.html', c=customer, tag_colors=tag_colors, users=users)
 
 @app.route('/customer/<int:id>/edit', methods=['GET', 'POST'])
 def edit_customer(id):
@@ -956,12 +960,54 @@ def history():
             if kw:
                 keywords.append(kw.lower())
     
+    # Get current user role for permissions
+    user_role = session.get('user_role', 'agent')
+    
+    # Also get all agents for super admin transfer functionality
+    users_list = User.query.all()
+    
     return render_template('chat-history.html',
                            sessions=sessions,
                            customers=customers_list,
                            inquiries=inquiries_list,
+                           users=users_list,
                            rule_keywords=keywords,
-                           current_view=view)
+                           current_view=view,
+                           user_role=user_role)
+
+@app.route('/visitor-profile/<int:session_id>')
+def visitor_profile(session_id):
+    chat_session = ChatSession.query.get_or_404(session_id)
+    # Generate a consistent mock phone number for the external profile demo
+    # The format will be: +60 12-XXX XXXX
+    mock_phone = f"+60 12-{ (session_id * 12345 % 900) + 100 } { (session_id * 6789) % 9000 + 1000 }"
+    return render_template('visitor_profile.html', session=chat_session, visitor_phone=mock_phone)
+
+@app.route('/api/chat/session/<int:session_id>/become-customer', methods=['POST'])
+def api_promote_to_customer(session_id):
+    chat_session = ChatSession.query.get_or_404(session_id)
+    
+    # Check if already a customer
+    if chat_session.linked_customer_id:
+        return jsonify({'ok': False, 'error': 'This visitor is already linked to a customer record.'}), 400
+
+    # Promote visitor to customer status with the mock phone number for consistency
+    mock_phone = f"+60 12-{ (session_id * 12345 % 900) + 100 } { (session_id * 6789) % 9000 + 1000 }"
+    new_customer = Customer(
+        name=chat_session.visitor_name,
+        email=chat_session.visitor_email,
+        phone=mock_phone,
+        status="Active",
+        assigned_staff=session.get('user_name', 'Admin')
+    )
+    db.session.add(new_customer)
+    db.session.commit() # Save to get the new ID
+    
+    # Update the chat session to reflect the new internal customer link
+    chat_session.linked_customer_id = new_customer.id
+    db.session.commit()
+    
+    return jsonify({'ok': True, 'customer_id': new_customer.id})
 
 # --- CHAT API ENDPOINTS ---
 
@@ -1011,9 +1057,9 @@ def api_chat_messages(session_id):
             'archived': chat_session.archived,
             'pinned': chat_session.pinned,
             'assigned_agent_id': chat_session.assigned_agent_id,
-            'assigned_agent_name': chat_session.assigned_agent.username if chat_session.assigned_agent else None,
+            'assigned_agent_name': chat_session.assigned_agent.name if chat_session.assigned_agent else None,
             'requested_agent_id': chat_session.requested_agent_id,
-            'requested_agent_name': chat_session.requested_agent.username if chat_session.requested_agent else None,
+            'requested_agent_name': chat_session.requested_agent.name if chat_session.requested_agent else None,
             'transfer_status': chat_session.transfer_status,
             'current_user_id': flask_session.get('user_id')
         },
@@ -1130,7 +1176,7 @@ def api_chat_handle_transfer(session_id):
             session_id=session_id,
             sender_type='system',
             sender_name='System',
-            text=f'🔄 Chat transferred from {old_agent_name} to {new_agent.username if new_agent else "another agent"}.',
+            text=f'🔄 Agent {old_agent_name} transferred this chat over to Agent {new_agent.name if new_agent else "another agent"}.',
             timestamp=datetime.now().strftime('%I:%M %p')
         )
         db.session.add(sys_msg)
@@ -1140,6 +1186,94 @@ def api_chat_handle_transfer(session_id):
         chat_session.transfer_status = 'none'
         db.session.commit()
         
+    return jsonify({'ok': True})
+
+@app.route('/api/chat/session/<int:session_id>/admin-transfer', methods=['POST'])
+def api_chat_admin_transfer(session_id):
+    from flask import session as flask_session
+    from datetime import datetime
+    
+    # Check if user is super admin
+    user_role = flask_session.get('user_role', 'agent')
+    if user_role != 'super_admin':
+        return jsonify({'ok': False, 'error': 'Only super admins can forcefully transfer chats.'}), 403
+        
+    chat_session = ChatSession.query.get_or_404(session_id)
+    data = request.get_json()
+    new_agent_id = data.get('target_user_id')
+    
+    if not new_agent_id:
+        return jsonify({'ok': False, 'error': 'No target agent provided.'}), 400
+        
+    new_agent = User.query.get(new_agent_id)
+    if not new_agent:
+        return jsonify({'ok': False, 'error': 'Target agent not found.'}), 404
+        
+    old_agent_name = "None"
+    if chat_session.assigned_agent_id:
+        old_agent = User.query.get(chat_session.assigned_agent_id)
+        if old_agent:
+            old_agent_name = old_agent.name
+            
+    chat_session.assigned_agent_id = new_agent_id
+    chat_session.requested_agent_id = None
+    chat_session.transfer_status = 'none'
+    chat_session.status = 'agent_active' # Ensure it's in agent mode
+    chat_session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    
+    # Add system message
+    sys_msg = ChatMessage(
+        session_id=session_id,
+        sender_type='system',
+        sender_name='System',
+        text=f'🛡️ Super Admin {flask_session.get("user_name")} forcefully transferred this chat from {old_agent_name} to {new_agent.name}.',
+        timestamp=datetime.now().strftime('%I:%M %p')
+    )
+    db.session.add(sys_msg)
+    db.session.commit()
+    
+    return jsonify({'ok': True})
+
+@app.route('/api/chat/session/<int:session_id>/force-takeover', methods=['POST'])
+def api_chat_force_takeover(session_id):
+    from flask import session as flask_session
+    from datetime import datetime
+    
+    # Check if user is super admin
+    user_role = flask_session.get('user_role', 'agent')
+    if user_role != 'super_admin':
+        return jsonify({'ok': False, 'error': 'Only super admins can force take over chats.'}), 403
+    
+    chat_session = ChatSession.query.get_or_404(session_id)
+    old_agent_name = None
+    
+    if chat_session.assigned_agent_id:
+        old_agent = User.query.get(chat_session.assigned_agent_id)
+        old_agent_name = old_agent.name if old_agent else 'previous agent'
+    
+    # Force transfer
+    chat_session.assigned_agent_id = flask_session.get('user_id')
+    chat_session.status = 'agent_active'
+    chat_session.requested_agent_id = None
+    chat_session.transfer_status = 'none'
+    chat_session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    
+    # Add system message
+    if old_agent_name:
+        message_text = f'⚡ Super Admin {flask_session.get("user_name", "Admin")} has forcefully taken over this conversation from {old_agent_name}.'
+    else:
+        message_text = f'⚡ Super Admin {flask_session.get("user_name", "Admin")} has taken over this conversation.'
+    
+    system_msg = ChatMessage(
+        session_id=session_id,
+        sender_type='system',
+        sender_name='System',
+        text=message_text,
+        timestamp=datetime.now().strftime('%I:%M %p')
+    )
+    db.session.add(system_msg)
+    db.session.commit()
+    
     return jsonify({'ok': True})
 
 @app.route('/api/chat/session/<int:session_id>/link-customer', methods=['POST'])
@@ -1250,7 +1384,16 @@ def lead_scoring():
 @app.route('/inquiry/<int:id>')
 def inquiry_detail(id):
     inquiry = Inquiry.query.get_or_404(id)
-    return render_template('inquiry_detail.html', inquiry=inquiry)
+    assigned_user = User.query.filter_by(username=inquiry.assigned_rep).first()
+    users = User.query.all()
+    return render_template('inquiry_detail.html', inquiry=inquiry, users=users, assigned_user=assigned_user)
+
+@app.route('/inquiry/<int:id>/delete', methods=['POST'])
+def delete_inquiry(id):
+    inquiry = Inquiry.query.get_or_404(id)
+    db.session.delete(inquiry)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 # API to fetch messages for the chat
 @app.route('/api/inquiry/<int:id>/messages')
@@ -1535,29 +1678,57 @@ def get_inquiries():
     search = request.args.get('search', '').lower()
     status_filters = request.args.getlist('status[]')
     
-    query = Inquiry.query
+    # We join with User to get the current display name based on username
+    query = db.session.query(Inquiry, User).outerjoin(User, Inquiry.assigned_rep == User.username)
+    
     if search:
         query = query.filter(Inquiry.customer.ilike(f'%{search}%'))
     if status_filters:
         query = query.filter(Inquiry.status.in_(status_filters))
         
-    inquiries = query.all()
-    return jsonify([
-        {'id': i.id, 'customer': i.customer, 'inquiry_type': i.inquiry_type, 
-         'status': i.status, 'assigned_rep': i.assigned_rep,
-         'created_at': i.created_at, 'created_by': i.created_by,
-         'updated_at': i.updated_at, 'updated_by': i.updated_by} for i in inquiries
-    ])
+    results = query.all()
+    
+    data = []
+    for inquiry, user in results:
+        # Format: "[display name] @[username]"
+        user_display = "Unassigned"
+        if user:
+            user_display = f"{user.name} @{user.username}"
+        elif inquiry.assigned_rep:
+            # Try to find user by name if username match failed (for old data)
+            alt_user = User.query.filter_by(name=inquiry.assigned_rep).first()
+            if alt_user:
+                user_display = f"{alt_user.name} @{alt_user.username}"
+            else:
+                user_display = inquiry.assigned_rep
+
+        data.append({
+            'id': inquiry.id,
+            'customer': inquiry.customer,
+            'customer_id': inquiry.customer_id,
+            'inquiry_type': inquiry.inquiry_type,
+            'status': inquiry.status,
+            'assigned_rep': user_display,
+            'rep_username': inquiry.assigned_rep,
+            'created_at': inquiry.created_at,
+            'created_by': inquiry.created_by,
+            'updated_at': inquiry.updated_at,
+            'updated_by': inquiry.updated_by
+        })
+    
+    return jsonify(data)
 
 @app.route('/inquiry/new')
 def inquiry_new():
-    return render_template('inquiry_new.html')
+    users = User.query.all()
+    return render_template('inquiry_new.html', users=users)
 
 @app.route('/api/inquiry/create', methods=['POST'])
 def api_create_inquiry():
     data = request.get_json()
     new_inquiry = Inquiry(
         customer=data.get('customer'),
+        customer_id=data.get('customer_id'),
         assigned_rep=data.get('assigned_rep'),
         inquiry_type=data.get('inquiry_type'),
         status=data.get('status', 'New'),
@@ -1613,6 +1784,16 @@ def api_update_inquiry(id):
 @app.route('/settings')
 def settings():
     return render_template('settings.html')
+
+@app.route('/api/inquiry/<int:id>/link-customer', methods=['POST'])
+def api_link_inquiry_customer(id):
+    inquiry = Inquiry.query.get_or_404(id)
+    data = request.get_json()
+    inquiry.customer_id = data.get('customer_id')
+    inquiry.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    inquiry.updated_by = session.get('user_name', 'Admin')
+    db.session.commit()
+    return jsonify({"ok": True})
 
 # Helper functions to serialize objects
 def template_to_dict(t):

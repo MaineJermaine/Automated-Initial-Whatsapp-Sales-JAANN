@@ -118,11 +118,19 @@
             tbody.innerHTML = data.map(i => `
                 <tr>
                     <td>${i.id}</td>
-                    <td><b>${i.customer}</b></td>
+                    <td>
+                        <b>${i.customer}</b>
+                        <div class="text-muted" style="font-size:0.7rem; font-weight:normal;">
+                            Last updated by ${i.updated_by || 'System'} at ${i.updated_at || 'Recently'}
+                        </div>
+                    </td>
                     <td>${i.inquiry_type}</td>
                     <td><span class="badge rounded-pill bg-info-subtle text-dark">${i.status}</span></td>
                     <td>${i.assigned_rep}</td>
-                    <td><a href="/inquiry/${i.id}" class="btn btn-sm btn-outline-primary">View</a></td>
+                    <td>
+                        <a href="/inquiry/${i.id}" class="btn btn-sm btn-outline-primary me-1">View</a>
+                        <a href="javascript:void(0)" onclick="confirmDeleteInquiry(${i.id})" class="btn btn-sm btn-outline-danger">Delete</a>
+                    </td>
                 </tr>
             `).join('');
         }
@@ -132,7 +140,37 @@
 
         // Initial load
         window.onload = refreshTable;
+
+        function confirmDeleteInquiry(id) {
+            const overlay = document.getElementById('confirmOverlay');
+            overlay.style.display = 'flex';
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card">
+                    <h3>🗑️ Delete Inquiry</h3>
+                    <p>Are you sure you want to delete this inquiry? This action cannot be undone.</p>
+                    <div class="btn-group">
+                        <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
+                        <button class="btn btn-sm" style="background:#dc2626;color:white;" onclick="executeDeleteInquiry(${id})">Delete</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function executeDeleteInquiry(id) {
+            document.getElementById('confirmOverlay').style.display = 'none';
+            const res = await fetch(`/inquiry/${id}/delete`, { method: "POST" });
+            if (res.ok) {
+                refreshTable();
+            } else {
+                alert('Failed to delete inquiry');
+            }
+        }
     </script>
+
+    <!-- Confirm Overlay -->
+    <div id="confirmOverlay" style="display:none;"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

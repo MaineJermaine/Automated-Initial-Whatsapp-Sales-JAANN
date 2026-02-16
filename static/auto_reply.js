@@ -16,7 +16,7 @@ function initializeApp() {
     initializeTabs();
     initializeStatCards();
     setupFAQToggle();
-    
+
     // Periodic enforcement of FAQ state (every 500ms)
     setInterval(() => {
         if (faqSectionOpen) {
@@ -33,18 +33,18 @@ function initializeApp() {
 function setupFAQToggle() {
     const btn = document.getElementById('showFaqButton');
     const hideBtn = document.querySelector('[id="chatFaqSection"] button.btn-link');
-    
+
     if (btn) {
-        btn.addEventListener('click', function(e) {
+        btn.addEventListener('click', function (e) {
             e.stopPropagation();
             e.preventDefault();
             console.log('Show FAQ button clicked');
             toggleChatFAQ(null);
         });
     }
-    
+
     if (hideBtn) {
-        hideBtn.addEventListener('click', function(e) {
+        hideBtn.addEventListener('click', function (e) {
             e.stopPropagation();
             e.preventDefault();
             console.log('Hide FAQ button clicked');
@@ -92,25 +92,25 @@ function initializeTabs() {
 // --- TOAST NOTIFICATIONS ---
 function showToast(message, type = 'success', duration = 3000) {
     console.log('showToast called:', message, type);
-    
+
     const container = document.getElementById('toastContainer');
     console.log('Toast container:', container);
-    
+
     if (!container) {
         console.error('Toast container not found!');
         return;
     }
-    
+
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    
+
     const icons = {
         'success': '✓',
         'error': '✕',
         'info': 'ℹ',
         'warning': '⚠'
     };
-    
+
     toast.innerHTML = `
         <div class="toast-message">
             <span class="toast-icon">${icons[type] || icons['info']}</span>
@@ -118,10 +118,10 @@ function showToast(message, type = 'success', duration = 3000) {
         </div>
         <button class="toast-close" onclick="this.parentElement.remove()">×</button>
     `;
-    
+
     container.appendChild(toast);
     console.log('Toast appended to container');
-    
+
     // Auto remove after duration
     setTimeout(() => {
         if (toast.parentElement) {
@@ -134,7 +134,7 @@ function showToast(message, type = 'success', duration = 3000) {
 // --- STAT CARDS INTERACTION ---
 function initializeStatCards() {
     const statCards = document.querySelectorAll('.row.g-4 .card');
-    
+
     statCards.forEach((card, index) => {
         card.addEventListener('click', () => {
             if (index === 0) {
@@ -153,7 +153,7 @@ function initializeStatCards() {
                 console.log('Showing usage stats');
             }
         });
-        
+
         // Add hover effect feedback
         card.addEventListener('mouseenter', () => {
             card.style.cursor = 'pointer';
@@ -179,12 +179,12 @@ function renderTemplates() {
     const searchInput = document.getElementById('searchInput');
     const categoryFilter = document.getElementById('categoryFilter');
     const container = document.getElementById('templateList');
-    
+
     if (!container) {
         console.error('Template list container not found');
         return;
     }
-    
+
     const search = searchInput ? searchInput.value.toLowerCase() : '';
     const cat = categoryFilter ? categoryFilter.value : '';
 
@@ -242,7 +242,7 @@ async function loadFAQs() {
         console.error('Error rendering chat FAQs:', error);
     }
     updateStats();
-    
+
     // Enforce the FAQ section state
     enforceFAQSectionState();
 }
@@ -250,14 +250,14 @@ async function loadFAQs() {
 function enforceFAQSectionState() {
     const section = document.getElementById('chatFaqSection');
     const btn = document.getElementById('showFaqButton');
-    
+
     if (!section || !btn) {
         return;
     }
-    
+
     const actualDisplay = section.style.display;
     const shouldBeOpen = faqSectionOpen;
-    
+
     // If section should be open but is closed, open it
     if (shouldBeOpen && actualDisplay === 'none') {
         console.warn('ENFORCEMENT: FAQ should be OPEN but is CLOSED! Fixing...');
@@ -276,12 +276,12 @@ function renderFAQs() {
     const faqSearchInput = document.getElementById('faqSearchInput');
     const faqCategoryFilter = document.getElementById('faqCategoryFilter');
     const container = document.getElementById('faqList');
-    
+
     if (!container) {
         console.error('FAQ list container not found');
         return;
     }
-    
+
     const search = faqSearchInput ? faqSearchInput.value.toLowerCase() : '';
     const cat = faqCategoryFilter ? faqCategoryFilter.value : '';
 
@@ -381,7 +381,7 @@ async function handleTemplateSubmit(e) {
 
     closeTemplateModal();
     loadTemplates();
-    
+
     // Show toast notification
     if (isCreate) {
         showToast(`Template "${title}" created successfully`, 'success');
@@ -390,16 +390,38 @@ async function handleTemplateSubmit(e) {
     }
 }
 
-async function deleteTemplate(id) {
-    if (confirm("Delete this template?")) {
-        const template = templates.find(t => t.id === id);
-        const templateTitle = template ? template.title : 'Template';
-        
-        await fetch(`/api/templates/${id}`, { method: 'DELETE' });
-        loadTemplates();
-        
-        showToast(`Template "${templateTitle}" deleted successfully`, 'success');
+function deleteTemplate(id) {
+    const template = templates.find(t => t.id === id);
+    const templateTitle = template ? template.title : 'Template';
+
+    const overlay = document.getElementById('confirmOverlay');
+    if (!overlay) {
+        // Fallback if overlay doesn't exist
+        if (confirm("Delete this template?")) {
+            executeDeleteTemplate(id, templateTitle);
+        }
+        return;
     }
+
+    overlay.style.display = 'flex';
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+        <div class="confirm-card">
+            <h3>🗑️ Delete Template</h3>
+            <p>Are you sure you want to delete the template "<strong>${templateTitle}</strong>"? This action cannot be undone.</p>
+            <div class="btn-group">
+                <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
+                <button class="btn btn-sm" style="background:#dc2626;color:white;" onclick="executeDeleteTemplate(${id}, '${templateTitle.replace(/'/g, "\\'")}')">Delete</button>
+            </div>
+        </div>
+    `;
+}
+
+async function executeDeleteTemplate(id, templateTitle) {
+    document.getElementById('confirmOverlay').style.display = 'none';
+    await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+    loadTemplates();
+    showToast(`Template "${templateTitle}" deleted successfully`, 'success');
 }
 
 // FAQ Modal Logic (Simplified)
@@ -435,7 +457,7 @@ async function handleFAQSubmit(e) {
     await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     closeFAQModal();
     loadFAQs();
-    
+
     // Show toast notification
     if (isCreate) {
         showToast(`FAQ question created successfully`, 'success');
@@ -445,19 +467,43 @@ async function handleFAQSubmit(e) {
 }
 
 async function deleteFAQ(id) {
-    if (confirm("Delete this FAQ?")) {
-        await fetch(`/api/faqs/${id}`, { method: 'DELETE' });
-        loadFAQs();
-        
-        showToast(`FAQ deleted successfully`, 'success');
+    const overlay = document.getElementById('confirmOverlay');
+    if (!overlay) {
+        // Fallback if overlay doesn't exist
+        if (confirm("Delete this FAQ?")) {
+            executeDeleteFAQ(id);
+        }
+        return;
     }
+
+    overlay.style.display = 'flex';
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+        <div class="confirm-card">
+            <h3>🗑️ Delete FAQ</h3>
+            <p>Are you sure you want to delete this FAQ? This action cannot be undone.</p>
+            <div class="btn-group">
+                <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
+                <button class="btn btn-sm" style="background:#dc2626;color:white;" onclick="executeDeleteFAQ(${id})">Delete</button>
+            </div>
+        </div>
+    `;
+}
+
+async function executeDeleteFAQ(id) {
+    document.getElementById('confirmOverlay').style.display = 'none';
+    await fetch(`/api/faqs/${id}`, { method: 'DELETE' });
+    loadFAQs();
+    showToast(`FAQ deleted successfully`, 'success');
 }
 
 // Global expose for onclick
 window.editTemplate = (id) => openTemplateModal('edit', id);
 window.deleteTemplate = deleteTemplate;
+window.executeDeleteTemplate = executeDeleteTemplate;
 window.editFAQ = (id) => openFAQModal('edit', id);
 window.deleteFAQ = deleteFAQ;
+window.executeDeleteFAQ = executeDeleteFAQ;
 
 // --- STATS ---
 function updateStats() {
@@ -465,23 +511,23 @@ function updateStats() {
     const totalTemplatesEl = document.getElementById('totalTemplates');
     const totalFAQsEl = document.getElementById('totalFAQs');
     const totalUsageEl = document.getElementById('totalUsage');
-    
+
     console.log('Updating stats - Templates:', templates.length, 'FAQs:', faqs.length);
-    
+
     if (totalTemplatesEl) {
         totalTemplatesEl.innerText = templates.length || 0;
         console.log('Updated Total Templates to:', templates.length);
     } else {
         console.error('totalTemplates element not found');
     }
-    
+
     if (totalFAQsEl) {
         totalFAQsEl.innerText = faqs.length || 0;
         console.log('Updated Total FAQs to:', faqs.length);
     } else {
         console.error('totalFAQs element not found');
     }
-    
+
     if (totalUsageEl) {
         const tUsage = templates.reduce((acc, curr) => acc + (curr.usageCount || 0), 0);
         const fUsage = faqs.reduce((acc, curr) => acc + (curr.clickCount || 0), 0);
@@ -498,26 +544,26 @@ function toggleChatFAQ(e) {
     toggleCallCount++;
     const callNum = toggleCallCount;
     const timestamp = new Date().getTime();
-    
+
     // Prevent event bubbling
     if (e) {
         e.stopPropagation();
         e.preventDefault();
     }
-    
+
     console.log(`[${callNum}] toggleChatFAQ called at ${timestamp}`);
-    
+
     const section = document.getElementById('chatFaqSection');
     const btn = document.getElementById('showFaqButton');
-    
+
     if (!section || !btn) {
         console.error(`[${callNum}] FAQ elements not found`);
         return;
     }
-    
+
     const wasOpen = section.style.display === 'block';
     console.log(`[${callNum}] wasOpen: ${wasOpen}`);
-    
+
     // Force toggle directly with inline styles
     if (wasOpen) {
         console.log(`[${callNum}] Closing FAQ section`);
@@ -529,7 +575,7 @@ function toggleChatFAQ(e) {
         section.style.display = 'block !important';
         btn.style.display = 'none !important';
         faqSectionOpen = true;
-        
+
         // Render FAQs if they exist
         if (faqs && faqs.length > 0) {
             console.log(`[${callNum}] Rendering FAQs`);
@@ -540,33 +586,33 @@ function toggleChatFAQ(e) {
 
 function renderChatFAQs(cat = 'All', e) {
     if (e) e.stopPropagation();
-    
+
     console.log('renderChatFAQs called with category:', cat);
     console.log('FAQs available:', faqs);
-    
+
     // Check if elements exist
     const filterContainer = document.getElementById('chatFaqFilters');
     const listContainer = document.getElementById('chatFaqList');
-    
+
     console.log('Filter container:', filterContainer);
     console.log('List container:', listContainer);
-    
+
     if (!filterContainer || !listContainer) {
         console.warn('Chat FAQ containers not found - elements may not be rendered yet');
         return;
     }
-    
+
     // Guard check for faqs data
     if (!faqs || !Array.isArray(faqs)) {
         console.warn('FAQs data is not an array:', faqs);
         listContainer.innerHTML = '<p class="text-muted">No FAQs available</p>';
         return;
     }
-    
+
     // 1. Render Filters
     const cats = ['All', ...new Set(faqs.map(f => f.category))];
     console.log('Categories found:', cats);
-    
+
     filterContainer.innerHTML = cats.map(c => `
         <button class="filter-btn ${c === cat ? 'active' : ''}" onclick="renderChatFAQs('${c}', event); event.stopPropagation();">${c}</button>
     `).join('');
@@ -588,23 +634,23 @@ function renderChatFAQs(cat = 'All', e) {
             </div>
         `).join('');
     }
-    
+
     console.log('Chat FAQs rendered successfully');
 }
 
 function toggleChatFAQItem(id, e) {
     if (e) e.stopPropagation();
-    
+
     console.log('toggleChatFAQItem called with id:', id);
     const faqItem = document.getElementById(`chat-faq-${id}`);
     if (!faqItem) {
         console.error('FAQ item not found:', `chat-faq-${id}`);
         return;
     }
-    
+
     faqItem.classList.toggle('open');
     console.log('FAQ item toggled, now open:', faqItem.classList.contains('open'));
-    
+
     // Increment click count and reload FAQ data
     fetch(`/api/faqs/${id}/click`, { method: 'POST' }).then(() => {
         console.log('FAQ click count incremented');
@@ -636,7 +682,7 @@ async function sendMessage() {
         } else {
             addMsg("Sorry, I couldn't find a suitable response.", 'bot');
         }
-        
+
         // Reload templates and FAQs to update usage counts in real-time
         await loadTemplates();
         await loadFAQs();

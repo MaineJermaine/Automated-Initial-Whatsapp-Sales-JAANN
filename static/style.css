@@ -1236,21 +1236,30 @@ input:checked+.slider:before {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 12px;
     white-space: nowrap;
 }
 
+.status-toggle-container.form-check {
+    padding-left: 0;
+    min-height: auto;
+    margin-bottom: 0;
+}
+
 .status-label {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--slate-900);
-    margin-right: 5px;
+    margin: 0;
 }
 
 .status-toggle-container .form-check-input {
-    width: 32px;
-    height: 16px;
+    width: 36px;
+    height: 18px;
     cursor: pointer;
+    margin-left: 0;
+    float: none;
+    flex-shrink: 0;
 }
 
 .action-btn {
@@ -2052,6 +2061,7 @@ input:checked+.slider:before {
         transform: translateX(100%);
         opacity: 0;
     }
+
     to {
         transform: translateX(0);
         opacity: 1;
@@ -2063,6 +2073,7 @@ input:checked+.slider:before {
         transform: translateX(0);
         opacity: 1;
     }
+
     to {
         transform: translateX(100%);
         opacity: 0;
@@ -2071,4 +2082,43 @@ input:checked+.slider:before {
 
 .toast.removing {
     animation: slideOutRight 0.3s ease-in;
+}
+
+/* --- Confirm modal --- */
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.confirm-card {
+    background: white;
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 380px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.confirm-card h3 {
+    margin: 0 0 10px;
+    font-size: 1.1rem;
+}
+
+.confirm-card p {
+    color: var(--gray);
+    font-size: 0.85rem;
+    margin-bottom: 18px;
+    line-height: 1.5;
+}
+
+.confirm-card .btn-group {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
 }

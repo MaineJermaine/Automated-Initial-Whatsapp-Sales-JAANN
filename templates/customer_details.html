@@ -176,11 +176,28 @@
 
                 <!-- Inquiry History -->
                 <div class="card p-4 shadow-sm border-0 mb-4">
-                    <h5 class="fw-bold">Inquiry History</h5>
-                    <p class="small text-muted">Customer has 1 active inquiry.</p>
-                    <a href="/repository?q={{ c.name }}" class="btn btn-outline-secondary btn-sm w-100">
-                        View Linked Inquiries
-                    </a>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0">Inquiry History</h5>
+                        <button class="btn btn-blue btn-sm" onclick="openLinkInquiryModal()">+ Link / Create</button>
+                    </div>
+
+                    <div id="linkedInquiriesList">
+                        {% if c.inquiries %}
+                        {% for inq in c.inquiries %}
+                        <div class="p-2 border rounded mb-2 bg-light d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-bold small">#{{ inq.id }} - {{ inq.inquiry_type }}</div>
+                                <div class="text-muted" style="font-size: 0.7rem;">Status: {{ inq.status }} | Rep: {{
+                                    inq.assigned_rep }}</div>
+                            </div>
+                            <a href="/inquiry/{{ inq.id }}" class="btn btn-xs btn-outline-primary py-0 px-2"
+                                style="font-size: 0.7rem;">View</a>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <p class="small text-muted text-center py-3">No inquiries linked to this customer.</p>
+                        {% endif %}
+                    </div>
                 </div>
 
                 <!-- Internal Notes -->
@@ -225,14 +242,186 @@
             }
         }
 
+
         function confirmDelete(id) {
-            if (confirm("Delete this customer?")) {
-                fetch(`/customer/${id}/delete`, { method: "POST" })
-                    .then(() => window.location = "/customers");
-            }
+            const overlay = document.getElementById('confirmOverlay');
+            overlay.style.display = 'flex';
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card">
+                    <h3>🗑️ Delete Customer</h3>
+                    <p>Are you sure you want to delete this customer? This will also delete all associated data. This action cannot be undone.</p>
+                    <div class="btn-group">
+                        <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
+                        <button class="btn btn-sm" style="background:#dc2626;color:white;" onclick="executeDeleteCustomer(${id})">Delete</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function executeDeleteCustomer(id) {
+            document.getElementById('confirmOverlay').style.display = 'none';
+            fetch(`/customer/${id}/delete`, { method: "POST" })
+                .then(() => window.location = "/customers");
         }
     </script>
 
+    <!-- Confirm Overlay -->
+    <div id="confirmOverlay" style="display:none;"></div>
+
+    <!-- LINK INQUIRY MODAL -->
+    <div class="modal fade" id="linkInquiryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Link or Create Inquiry</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs mb-3" id="linkInquiryTabs" role="tablist">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab"
+                                data-bs-target="#tabLinkExisting">Existing</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCreateNew">Create
+                                New</button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="tabLinkExisting">
+                            <label class="form-label small fw-bold">Select Inquiry</label>
+                            <select id="selectInquiryToLink" class="form-select mb-3">
+                                <option value="">-- Select an inquiry --</option>
+                            </select>
+                            <button class="btn btn-blue w-100" onclick="handleLinkInquiry()">Link to Profile</button>
+                        </div>
+
+                        <div class="tab-pane fade" id="tabCreateNew">
+                            <div class="row g-2">
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label small fw-bold">Assigned Rep</label>
+                                    <select id="newInqRep" class="form-select">
+                                        <option value="">-- Select Rep --</option>
+                                        {% for u in users %}
+                                        <option value="{{ u.name }}">{{ u.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label small fw-bold">Type</label>
+                                    <select id="newInqType" class="form-select">
+                                        <option value="Sales">Sales</option>
+                                        <option value="Support">Support</option>
+                                        <option value="Product">Product</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label small fw-bold">Initial Status</label>
+                                    <select id="newInqStatus" class="form-select">
+                                        <option value="New">New</option>
+                                        <option value="In Progress">In Progress</option>
+                                        <option value="Resolved">Resolved</option>
+                                        <option value="Urgent">Urgent</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label small fw-bold">Link to Chat</label>
+                                    <select id="newInqLinkedChat" class="form-select">
+                                        <option value="">-- None --</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 mb-2">
+                                    <label class="form-label small fw-bold">Description</label>
+                                    <textarea id="newInqDesc" class="form-control" rows="3"
+                                        placeholder="Enter details..."></textarea>
+                                </div>
+                            </div>
+                            <button class="btn btn-blue w-100 mt-2" onclick="handleCreateInquiry()">Create &
+                                Link</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const customerName = {{ c.name | tojson }};
+        const customerId = {{ c.id | tojson }};
+
+        async function openLinkInquiryModal() {
+            const modal = new bootstrap.Modal(document.getElementById('linkInquiryModal'));
+            modal.show();
+
+            // Load inquiries for linking
+            const res = await fetch('/api/inquiries');
+            const data = await res.json();
+            const select = document.getElementById('selectInquiryToLink');
+            select.innerHTML = '<option value="">-- Select an inquiry --</option>';
+
+            data.forEach(i => {
+                if (i.customer_id != customerId) {
+                    const opt = document.createElement('option');
+                    opt.value = i.id;
+                    opt.textContent = `#${i.id} - ${i.customer} (${i.inquiry_type})`;
+                    select.appendChild(opt);
+                }
+            });
+
+            // Load chats for the NEW inquiry dropdown
+            const chatRes = await fetch('/api/chat/sessions');
+            const chats = await chatRes.json();
+            const chatSelect = document.getElementById('newInqLinkedChat');
+            chatSelect.innerHTML = '<option value="">-- None --</option>';
+            chats.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = `${s.visitor_name} (${s.visitor_email || 'No Email'})`;
+                chatSelect.appendChild(opt);
+            });
+        }
+
+        async function handleLinkInquiry() {
+            const inqId = document.getElementById('selectInquiryToLink').value;
+            if (!inqId) return alert('Select an inquiry first.');
+
+            const res = await fetch(`/api/inquiry/${inqId}/link-customer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customer_id: customerId })
+            });
+
+            if (res.ok) location.reload();
+            else alert('Failed to link inquiry.');
+        }
+
+        async function handleCreateInquiry() {
+            const payload = {
+                customer: customerName,
+                customer_id: customerId,
+                assigned_rep: document.getElementById('newInqRep').value,
+                inquiry_type: document.getElementById('newInqType').value,
+                status: document.getElementById('newInqStatus').value,
+                linked_session_id: document.getElementById('newInqLinkedChat').value,
+                description: document.getElementById('newInqDesc').value
+            };
+
+            if (!payload.description) return alert('Please enter a description.');
+
+            const res = await fetch('/api/inquiry/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) location.reload();
+            else alert('Failed to create inquiry.');
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 

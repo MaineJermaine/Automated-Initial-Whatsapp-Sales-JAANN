@@ -232,7 +232,10 @@
                         <td>{{ c.last_contact or "—" }}</td>
 
                         <td>
-                            <a href="/customer/{{ c.id }}/edit" class="btn btn-blue btn-sm">Edit</a>
+                            <div class="d-flex gap-1 justify-content-end">
+                                <a href="/customer/{{ c.id }}" class="btn btn-sm btn-outline-primary">View</a>
+                                <a href="/customer/{{ c.id }}/edit" class="btn btn-blue btn-sm">Edit</a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}

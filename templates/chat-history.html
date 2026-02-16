@@ -714,42 +714,7 @@
             justify-content: center;
         }
 
-        /* --- Confirm modal --- */
-        .confirm-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
 
-        .confirm-card {
-            background: white;
-            border-radius: 16px;
-            padding: 28px;
-            max-width: 380px;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-        }
-
-        .confirm-card h3 {
-            margin: 0 0 10px;
-            font-size: 1.1rem;
-        }
-
-        .confirm-card p {
-            color: var(--gray);
-            font-size: 0.85rem;
-            margin-bottom: 18px;
-        }
-
-        .confirm-card .btn-group {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-        }
 
         /* Message action buttons */
         .chat-bubble {
@@ -904,7 +869,9 @@
                             <span
                                 class="chat-status-dot {% if s.status == 'bot' %}dot-bot{% elif s.status == 'agent_active' %}dot-agent{% else %}dot-closed{% endif %}"></span>
                             {% if s.pinned %}<span class="pin-icon">📌</span>{% endif %}
-                            <span class="name-text">{{ s.visitor_name }}</span>
+                            <span class="name-text"
+                                onclick="event.stopPropagation(); window.location.href='/visitor-profile/{{ s.id }}'"
+                                style="cursor:pointer; text-decoration:underline;">{{ s.visitor_name }}</span>
                             {% if s.is_lead %}
                             <span class="keyword-flag"> ⚡ Lead ({{ s.calculated_score | int }})</span>
                             {% endif %}
@@ -937,7 +904,9 @@
                     <div class="chat-header-info">
                         <div class="chat-header-avatar" id="chatAvatar"></div>
                         <div>
-                            <div class="chat-header-name" id="chatHeaderName"></div>
+                            <div class="chat-header-name">
+                                <a id="chatHeaderName" href="#" style="color:inherit; text-decoration:none;"></a>
+                            </div>
                             <div class="chat-header-status" id="chatHeaderStatus"></div>
                         </div>
                     </div>
@@ -1141,6 +1110,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
             const sessionId = params.get('session');
+            const savedSessionId = localStorage.getItem('lastChatSessionId');
 
             if (sessionId) {
                 selectChat(parseInt(sessionId));
@@ -1148,6 +1118,16 @@
                     const item = document.querySelector(`.chat-list-item[data-session-id="${sessionId}"]`);
                     if (item) item.scrollIntoView({ block: 'center', behavior: 'smooth' });
                 }, 100);
+            } else if (savedSessionId) {
+                // Try to load the last viewed chat if it exists in the current view
+                const item = document.querySelector(`.chat-list-item[data-session-id="${savedSessionId}"]`);
+                if (item) {
+                    selectChat(parseInt(savedSessionId));
+                } else {
+                    // Fallback to first item if saved session not in current view
+                    const firstItem = document.querySelector('.chat-list-item');
+                    if (firstItem) selectChat(parseInt(firstItem.dataset.sessionId));
+                }
             } else {
                 const firstItem = document.querySelector('.chat-list-item');
                 if (firstItem) {
@@ -1221,6 +1201,10 @@
 
             const menu = document.getElementById('ctxMenu');
             menu.innerHTML = `
+                <div class="ctx-menu-item" onclick="window.location.href='/visitor-profile/${sessionId}'">
+                    👤 View Profile
+                </div>
+                <div class="ctx-menu-divider"></div>
                 <div class="ctx-menu-item" onclick="pinChat(${sessionId}, ${!isPinned})">
                     ${isPinned ? '📌 Unpin' : '📌 Pin to Top'}
                 </div>
@@ -1291,6 +1275,7 @@
         // ===== SELECT CHAT =====
         async function selectChat(sessionId) {
             currentSessionId = sessionId;
+            localStorage.setItem('lastChatSessionId', sessionId);
 
             // Update sidebar active state
             document.querySelectorAll('.chat-list-item').forEach(el => el.classList.remove('active'));
@@ -1311,7 +1296,10 @@
             const parts = name.trim().split(' ');
             const initials = parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '');
             document.getElementById('chatAvatar').textContent = initials.toUpperCase();
-            document.getElementById('chatHeaderName').textContent = name;
+            const headerNameLink = document.getElementById('chatHeaderName');
+            headerNameLink.textContent = name;
+            headerNameLink.href = `/visitor-profile/${sessionId}`;
+            headerNameLink.style.textDecoration = 'underline';
 
             // Ownership & Transfer Logic
             const actionsDiv = document.getElementById('transferActions');
@@ -1331,11 +1319,22 @@
                 statusEl.innerHTML = '<span style="color:#94a3b8;">⚪ Closed</span>';
             }
 
+            const isSuperAdmin = '{{ user_role }}' === 'super_admin';
+
             // 2. Action Buttons & Input State
             actionsDiv.innerHTML = '';
+
+            // Shared Super Admin Force Transfer Button
+            const adminTransferBtnHTML = isSuperAdmin ? '<button class="btn btn-sm btn-outline-dark" onclick="openAdminTransferModal()">🛡️ Admin Transfer</button>' : '';
+
             if (!assignedId) {
                 // Unassigned
-                actionsDiv.innerHTML = '<button class="btn btn-sm btn-blue" onclick="confirmTakeOver()">🎧 Take Over</button>';
+                actionsDiv.innerHTML = `
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-blue" onclick="confirmTakeOver()">🎧 Take Over</button>
+                        ${adminTransferBtnHTML}
+                    </div>
+                `;
                 msgInput.disabled = true;
                 msgInput.placeholder = 'Take over chat to start typing...';
                 btnSend.disabled = true;
@@ -1347,10 +1346,16 @@
                             <small class="text-muted">Transfer requested by ${data.session.requested_agent_name}</small>
                             <button class="btn btn-sm btn-outline-success" onclick="handleTransfer('accept')">Accept</button>
                             <button class="btn btn-sm btn-outline-danger" onclick="handleTransfer('reject')">Reject</button>
+                            ${adminTransferBtnHTML}
                         </div>
                     `;
                 } else {
-                    actionsDiv.innerHTML = '<span class="badge bg-success-subtle text-success">You own this chat</span>';
+                    actionsDiv.innerHTML = `
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-success-subtle text-success">You own this chat</span>
+                            ${adminTransferBtnHTML}
+                        </div>
+                    `;
                 }
                 msgInput.disabled = false;
                 msgInput.placeholder = 'Type your message...';
@@ -1358,9 +1363,26 @@
             } else {
                 // Assigned to someone else
                 if (data.session.transfer_status === 'pending' && data.session.requested_agent_id === currentUserId) {
-                    actionsDiv.innerHTML = '<span class="badge bg-warning-subtle text-warning">Transfer Request Sent</span>';
+                    actionsDiv.innerHTML = `
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-warning-subtle text-warning">Transfer Request Sent</span>
+                            ${adminTransferBtnHTML}
+                        </div>
+                    `;
                 } else {
-                    actionsDiv.innerHTML = '<button class="btn btn-sm btn-outline-primary" onclick="requestTransfer()">🔄 Request Transfer</button>';
+                    if (isSuperAdmin) {
+                        // Super admin gets options
+                        actionsDiv.innerHTML = `
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-primary" onclick="requestTransfer()">🔄 Request Transfer</button>
+                                <button class="btn btn-sm btn-danger" onclick="forceTakeOver()">⚡ Force Take Over</button>
+                                ${adminTransferBtnHTML}
+                            </div>
+                        `;
+                    } else {
+                        // Regular agent can only request
+                        actionsDiv.innerHTML = '<button class="btn btn-sm btn-outline-primary" onclick="requestTransfer()">🔄 Request Transfer</button>';
+                    }
                 }
                 msgInput.disabled = true;
                 msgInput.placeholder = `Only ${data.session.assigned_agent_name} can respond...`;
@@ -1611,8 +1633,24 @@
             }
         }
 
-        async function requestTransfer() {
-            if (!confirm('Request to take over this chat from the current agent?')) return;
+        function requestTransfer() {
+            const overlay = document.getElementById('confirmOverlay');
+            overlay.style.display = 'flex';
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card">
+                    <h3>🔄 Request Transfer</h3>
+                    <p>Request to take over this chat from the current agent? They will be notified and can accept or reject your request.</p>
+                    <div class="btn-group">
+                        <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
+                        <button class="btn btn-blue" onclick="executeRequestTransfer()">Send Request</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function executeRequestTransfer() {
+            document.getElementById('confirmOverlay').style.display = 'none';
             const res = await fetch(`/api/chat/session/${currentSessionId}/request-transfer`, {
                 method: 'POST'
             });
@@ -1635,6 +1673,65 @@
                 selectChat(currentSessionId);
             } else {
                 alert(data.error);
+            }
+        }
+
+        function forceTakeOver() {
+            const overlay = document.getElementById('confirmOverlay');
+            overlay.style.display = 'flex';
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card">
+                    <h3 style="color:#dc2626;">⚡ Force Take Over</h3>
+                    <p><strong>Warning:</strong> This will immediately transfer the chat to you without requiring approval from the current agent. Use this power responsibly.</p>
+                    <div class="btn-group">
+                        <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
+                        <button class="btn btn-sm" style="background:#dc2626;color:white;" onclick="executeForceTakeOver()">Force Take Over</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function executeForceTakeOver() {
+            document.getElementById('confirmOverlay').style.display = 'none';
+
+            const res = await fetch(`/api/chat/session/${currentSessionId}/force-takeover`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await res.json();
+
+            if (data.ok) {
+                selectChat(currentSessionId); // Refresh UI
+            } else {
+                alert(data.error || 'Failed to force take over.');
+            }
+        }
+
+        function openAdminTransferModal() {
+            if (!currentSessionId) return;
+            new bootstrap.Modal(document.getElementById('adminTransferModal')).show();
+        }
+
+        async function executeAdminTransfer() {
+            const targetUserId = document.getElementById('adminTransferAgentSelect').value;
+            if (!targetUserId) {
+                alert('Please select an agent.');
+                return;
+            }
+
+            const res = await fetch(`/api/chat/session/${currentSessionId}/admin-transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_user_id: targetUserId })
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('adminTransferModal')).hide();
+                selectChat(currentSessionId);
+            } else {
+                alert(data.error || 'Error transferring chat.');
             }
         }
 
@@ -1891,6 +1988,33 @@
             });
         }
     </script>
+
+    <!-- Forced Transfer Modal (Super Admin) -->
+    <div class="modal fade" id="adminTransferModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">🛡️ Admin Force Transfer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted mb-3">Select an agent to forcefully transfer this conversation to. This
+                        agent will immediately gain full control and typing permissions.</p>
+                    <label class="form-label small fw-bold">Select Target Agent</label>
+                    <select id="adminTransferAgentSelect" class="form-select">
+                        <option value="">-- Select Agent --</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.name }} (@{{ u.username }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-blue" onclick="executeAdminTransfer()">Transfer Now</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
