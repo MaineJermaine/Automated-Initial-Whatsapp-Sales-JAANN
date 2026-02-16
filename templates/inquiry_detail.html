@@ -32,12 +32,15 @@
 <body id="page-repository">
     <aside class="sidebar">
         <h2>CRM Admin</h2>
-        <a href="/dashboard" class="nav-link nav-dashboard active">Dashboard</a>
+        <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
-        <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
+        <a href="/repository" class="nav-link nav-repository active">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
+        {% if session.get('user_role') == 'super_admin' %}
+        <a href="/admin/create-account" class="nav-link nav-admin">Manage Accounts</a>
+        {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
                 <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle"
