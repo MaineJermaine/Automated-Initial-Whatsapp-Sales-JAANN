@@ -23,13 +23,13 @@
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring active">Lead Scoring</a>
-        {% if session.get('user_role') == 'super_admin' %}
+        {% if session.get('user_role') in ['super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">Manage Accounts</a>
         {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
-                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
-                    id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
+                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle" id="dropdownUser1"
+                    data-bs-toggle="dropdown" aria-expanded="false">
                     <div class="avatar-circle bg-primary text-white me-2"
                         style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">
                         {% if session.get('user_pic') and 'http' in session.get('user_pic') %}
@@ -261,7 +261,7 @@
         }
 
         function executeDeleteRule(ruleId) {
-            window.location.href = `/admin/delete-rule/${ruleId}`;
+            window.location.href = `/delete_rule/${ruleId}`;
         }
     </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>

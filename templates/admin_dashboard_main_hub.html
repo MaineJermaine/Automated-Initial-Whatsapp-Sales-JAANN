@@ -26,7 +26,7 @@
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') == 'super_admin' %}
+        {% if session.get('user_role') in ['super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">Manage Accounts</a>
         {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
@@ -86,12 +86,18 @@
         <div class="card mb-4 announcement-section" style="padding: 25px;">
             <div class="announcement-header">
                 <h3 style="margin:0; font-size: 1.1rem; color: var(--slate-900);">📢 Announcements</h3>
+                {% if session.get('user_role') in ['super_admin', 'admin'] %}
                 <button class="btn btn-blue" id="btnNewAnnouncement" onclick="openAnnouncementModal()">
                     + New Announcement
                 </button>
+                {% endif %}
             </div>
             <p style="color: var(--gray); font-size: 0.85rem; margin-bottom: 20px;">
+                {% if session.get('user_role') in ['super_admin', 'admin'] %}
                 Create, view, edit, and delete team announcements from this panel.
+                {% else %}
+                View the latest announcements here.
+                {% endif %}
             </p>
             <div id="announcementsContainer">
                 {% if all_announcements %}
@@ -106,18 +112,22 @@
                             <small class="announcement-date">{{ a.created_at or 'N/A' }}</small>
                         </div>
                     </div>
+                    {% if session.get('user_role') in ['super_admin', 'admin'] %}
                     <div class="announcement-card-actions">
                         <button class="btn btn-sm btn-gray" title="Edit"
                             onclick="editAnnouncement({{ a.id }}, '{{ a.title | e }}', `{{ a.content | e }}`, '{{ a.priority }}')">✏️</button>
                         <button class="btn btn-sm btn-red" title="Delete"
                             onclick="confirmDeleteAnnouncement({{ a.id }})">🗑️</button>
                     </div>
+                    {% endif %}
                 </div>
                 {% endfor %}
                 {% else %}
                 <div class="announcement-empty" id="announcementEmpty">
-                    <p style="text-align:center; color: var(--gray); padding: 30px 0;">No announcements yet. Click
-                        <strong>+ New Announcement</strong> to create one.
+                    <p style="text-align:center; color: var(--gray); padding: 30px 0;">No announcements yet.
+                        {% if session.get('user_role') in ['super_admin', 'admin'] %}
+                        Click <strong>+ New Announcement</strong> to create one.
+                        {% endif %}
                     </p>
                 </div>
                 {% endif %}
@@ -146,10 +156,16 @@
                                             'No email' }}</small>
                                     </div>
                                 </div>
-                                <div class="text-end">
+                                <div class="text-end d-flex align-items-center gap-2">
                                     <span class="badge bg-primary rounded-pill px-3 py-2" style="font-size:0.85rem;">
                                         Score: {{ lead.calculated_score | int }}
                                     </span>
+                                    <div style="width: 1px; height: 20px; background: rgba(0,0,0,0.1); margin: 0 4px;">
+                                    </div>
+                                    <a href="/history?session={{ lead.id }}" class="btn btn-sm btn-outline-primary"
+                                        style="font-size: 0.75rem; border-radius: 6px; padding: 4px 10px;">
+                                        View
+                                    </a>
                                 </div>
                             </div>
                             {% endfor %}
@@ -196,237 +212,333 @@
                 </div>
             </div>
         </div>
-    </main>
 
-    <!-- ===== CUSTOMIZE DASHBOARD MODAL ===== -->
-    <div class="modal fade" id="customizeModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold">⚙️ Customize Dashboard</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p style="color: var(--gray); font-size: 0.85rem; margin-bottom: 16px;">Choose which stats and
-                        graphs to display on your dashboard. Your preferences are saved to your account.</p>
-
-                    <!-- Tab Navigation -->
-                    <ul class="nav nav-tabs customize-tabs mb-3" id="customizeTabs" role="tablist">
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link active" id="stats-tab" data-bs-toggle="tab"
-                                data-bs-target="#statsPane" type="button" role="tab">📊 Solid Stats</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                            <button class="nav-link" id="graphs-tab" data-bs-toggle="tab" data-bs-target="#graphsPane"
-                                type="button" role="tab">📈 Graphs</button>
-                        </li>
-                    </ul>
-
-                    <!-- Tab Content -->
-                    <div class="tab-content" id="customizeTabContent">
-                        <!-- Solid Stats Pane -->
-                        <div class="tab-pane fade show active" id="statsPane" role="tabpanel">
-                            <div class="customize-grid" id="customizeStatsList">
-                                <!-- dynamically populated -->
-                            </div>
-                        </div>
-                        <!-- Graphs Pane -->
-                        <div class="tab-pane fade" id="graphsPane" role="tabpanel">
-                            <div class="customize-grid" id="customizeGraphsList">
-                                <!-- dynamically populated -->
-                            </div>
+        <!-- ========== ALL LEADS SECTION ========== -->
+        <div class="row g-4 mt-2 mb-4">
+            <div class="col-12">
+                <div class="card" style="padding: 25px;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h3 style="margin:0; font-size: 1.1rem; color: var(--slate-900);">📊 All Customer Leads</h3>
+                        <div class="d-flex align-items-center gap-2">
+                            <label for="allLeadsSort" class="text-muted small" style="white-space:nowrap;">Sort
+                                by:</label>
+                            <select class="form-select form-select-sm" id="allLeadsSort"
+                                style="width: 180px; border-radius: 8px;" onchange="sortAllLeads()">
+                                <option value="score-desc">🚀 Highest Score First</option>
+                                <option value="score-asc">📉 Lowest Score First</option>
+                                <option value="name-asc">🔤 Name A-Z</option>
+                                <option value="name-desc">🔤 Name Z-A</option>
+                            </select>
                         </div>
                     </div>
-                </div>
-                <div class="modal-footer border-0 pt-0">
-                    <button type="button" class="btn btn-blue w-100" onclick="saveDashboardConfig()">Save
-                        Changes</button>
-                    <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+
+                    <div id="allLeadsContainer">
+                        {% if all_leads %}
+                        <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3" id="allLeadsList">
+                            {% for lead in all_leads %}
+                            <div class="col lead-item" data-score="{{ lead.calculated_score | int }}"
+                                data-name="{{ lead.visitor_name }}">
+                                <div class="card h-100 shadow-sm border p-3 hover-shadow"
+                                    style="transition: all 0.2s; border-radius: 12px; background: #fff;">
+                                    <div class="d-flex align-items-center justify-content-between mb-3">
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-circle me-3 bg-light text-primary"
+                                                style="width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size: 0.9rem;">
+                                                {{ lead.visitor_name[0] | upper }}
+                                            </div>
+                                            <div>
+                                                <h6 class="mb-0 text-dark" style="font-weight:600; font-size: 0.95rem;">
+                                                    {{ lead.visitor_name }}</h6>
+                                                <small class="text-muted" style="font-size:0.75rem;">{{
+                                                    lead.visitor_email or 'No email' }}</small>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="badge bg-primary-subtle text-primary rounded-pill px-2 py-1"
+                                                style="font-size:0.7rem;">
+                                                Scored: {{ lead.calculated_score | int }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
+                                        <small class="text-muted" style="font-size: 0.7rem;">ID: #{{ lead.id }}</small>
+                                        <a href="/history?session={{ lead.id }}" class="btn btn-sm btn-outline-primary"
+                                            style="font-size: 0.7rem; border-radius: 6px; padding: 2px 12px;">
+                                            Open Chat
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-5">
+                            <p class="text-muted mb-0">No lead data available to show.</p>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+        <!-- ========== END ALL LEADS SECTION ========== -->
 
-    <!-- Announcement Create / Edit Modal -->
-    <div class="modal fade" id="announcementModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold" id="announcementModalTitle">New Announcement</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="annEditId" value="">
-                    <div class="form-group">
-                        <label for="annTitle">Title</label>
-                        <input type="text" id="annTitle" placeholder="e.g. System Maintenance Notice"
-                            class="form-control">
+        <!-- ===== CUSTOMIZE DASHBOARD MODAL ===== -->
+        <div class="modal fade" id="customizeModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header border-0 pb-0">
+                        <h5 class="modal-title fw-bold">⚙️ Customize Dashboard</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
-                    <div class="form-group">
-                        <label for="annContent">Content</label>
-                        <textarea id="annContent" rows="4" placeholder="Write your announcement here..."
-                            class="form-control"></textarea>
+                    <div class="modal-body">
+                        <p style="color: var(--gray); font-size: 0.85rem; margin-bottom: 16px;">Choose which stats and
+                            graphs to display on your dashboard. Your preferences are saved to your account.</p>
+
+                        <!-- Tab Navigation -->
+                        <ul class="nav nav-tabs customize-tabs mb-3" id="customizeTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="stats-tab" data-bs-toggle="tab"
+                                    data-bs-target="#statsPane" type="button" role="tab">📊 Solid Stats</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="graphs-tab" data-bs-toggle="tab"
+                                    data-bs-target="#graphsPane" type="button" role="tab">📈 Graphs</button>
+                            </li>
+                        </ul>
+
+                        <!-- Tab Content -->
+                        <div class="tab-content" id="customizeTabContent">
+                            <!-- Solid Stats Pane -->
+                            <div class="tab-pane fade show active" id="statsPane" role="tabpanel">
+                                <div class="customize-grid" id="customizeStatsList">
+                                    <!-- dynamically populated -->
+                                </div>
+                            </div>
+                            <!-- Graphs Pane -->
+                            <div class="tab-pane fade" id="graphsPane" role="tabpanel">
+                                <div class="customize-grid" id="customizeGraphsList">
+                                    <!-- dynamically populated -->
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="annPriority">Priority</label>
-                        <select id="annPriority" class="form-select">
-                            <option value="low">Low</option>
-                            <option value="normal" selected>Normal</option>
-                            <option value="high">High</option>
-                            <option value="urgent">Urgent</option>
-                        </select>
+                    <div class="modal-footer border-0 pt-0">
+                        <button type="button" class="btn btn-blue w-100" onclick="saveDashboardConfig()">Save
+                            Changes</button>
+                        <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
                     </div>
-                </div>
-                <div class="modal-footer border-0 pt-0">
-                    <button type="button" class="btn btn-blue w-100" id="btnSaveAnnouncement"
-                        onclick="saveAnnouncement()">Create Announcement</button>
-                    <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Delete Confirmation Modal -->
-    <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content">
-                <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold" style="color: var(--red);">⚠️ Confirm Delete</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p style="font-size: 0.9rem; color: var(--gray);">Are you sure you want to delete this announcement?
-                        This action cannot be undone.</p>
-                    <input type="hidden" id="deleteTargetId" value="">
-                </div>
-                <div class="modal-footer border-0 pt-0">
-                    <button type="button" class="btn btn-red w-100" onclick="deleteAnnouncement()">Yes, Delete</button>
-                    <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+        <!-- Announcement Create / Edit Modal -->
+        <div class="modal fade" id="announcementModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header border-0 pb-0">
+                        <h5 class="modal-title fw-bold" id="announcementModalTitle">New Announcement</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="annEditId" value="">
+                        <div class="form-group">
+                            <label for="annTitle">Title</label>
+                            <input type="text" id="annTitle" placeholder="e.g. System Maintenance Notice"
+                                class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="annContent">Content</label>
+                            <textarea id="annContent" rows="4" placeholder="Write your announcement here..."
+                                class="form-control"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="annPriority">Priority</label>
+                            <select id="annPriority" class="form-select">
+                                <option value="low">Low</option>
+                                <option value="normal" selected>Normal</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-0 pt-0">
+                        <button type="button" class="btn btn-blue w-100" id="btnSaveAnnouncement"
+                            onclick="saveAnnouncement()">Create Announcement</button>
+                        <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- Delete Confirmation Modal -->
+        <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-sm">
+                <div class="modal-content">
+                    <div class="modal-header border-0 pb-0">
+                        <h5 class="modal-title fw-bold" style="color: var(--red);">⚠️ Confirm Delete</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="font-size: 0.9rem; color: var(--gray);">Are you sure you want to delete this
+                            announcement?
+                            This action cannot be undone.</p>
+                        <input type="hidden" id="deleteTargetId" value="">
+                    </div>
+                    <div class="modal-footer border-0 pt-0">
+                        <button type="button" class="btn btn-red w-100" onclick="deleteAnnouncement()">Yes,
+                            Delete</button>
+                        <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <script src="{{ url_for('static', filename='app.js') }}"></script>
 
-    <script>
-        /* ==========================================================================
-           ANNOUNCEMENTS CRUD – Dashboard Inline Script
-           ========================================================================== */
+        <script>
+            /* ==========================================================================
+               ANNOUNCEMENTS CRUD – Dashboard Inline Script
+               ========================================================================== */
 
-        // --- CREATE / UPDATE ---
-        function openAnnouncementModal(editId, title, content, priority) {
-            document.getElementById('annEditId').value = editId || '';
-            document.getElementById('annTitle').value = title || '';
-            document.getElementById('annContent').value = content || '';
-            document.getElementById('annPriority').value = priority || 'normal';
+            // --- CREATE / UPDATE ---
+            function openAnnouncementModal(editId, title, content, priority) {
+                document.getElementById('annEditId').value = editId || '';
+                document.getElementById('annTitle').value = title || '';
+                document.getElementById('annContent').value = content || '';
+                document.getElementById('annPriority').value = priority || 'normal';
 
-            const modalTitle = document.getElementById('announcementModalTitle');
-            const saveBtn = document.getElementById('btnSaveAnnouncement');
+                const modalTitle = document.getElementById('announcementModalTitle');
+                const saveBtn = document.getElementById('btnSaveAnnouncement');
 
-            if (editId) {
-                modalTitle.textContent = 'Edit Announcement';
-                saveBtn.textContent = 'Save Changes';
-            } else {
-                modalTitle.textContent = 'New Announcement';
-                saveBtn.textContent = 'Create Announcement';
-            }
-
-            const modal = new bootstrap.Modal(document.getElementById('announcementModal'));
-            modal.show();
-        }
-
-        // Alias for inline onclick in cards
-        function editAnnouncement(id, title, content, priority) {
-            openAnnouncementModal(id, title, content, priority);
-        }
-
-        async function saveAnnouncement() {
-            const id = document.getElementById('annEditId').value;
-            const title = document.getElementById('annTitle').value.trim();
-            const content = document.getElementById('annContent').value.trim();
-            const priority = document.getElementById('annPriority').value;
-
-            if (!title || !content) {
-                alert('Title and Content are required!');
-                return;
-            }
-
-            const payload = { title, content, priority };
-
-            try {
-                let res;
-                if (id) {
-                    // UPDATE (PUT)
-                    res = await fetch(`/api/announcements/${id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
+                if (editId) {
+                    modalTitle.textContent = 'Edit Announcement';
+                    saveBtn.textContent = 'Save Changes';
                 } else {
-                    // CREATE (POST)
-                    res = await fetch('/api/announcements', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
+                    modalTitle.textContent = 'New Announcement';
+                    saveBtn.textContent = 'Create Announcement';
                 }
 
-                if (res.ok) {
-                    // Close modal and refresh page to show new/updated data
-                    bootstrap.Modal.getInstance(document.getElementById('announcementModal')).hide();
-                    window.location.reload();
-                } else {
-                    const err = await res.json();
-                    alert('Error: ' + (err.error || 'Could not save announcement'));
-                }
-            } catch (e) {
-                console.error('Save announcement error:', e);
-                alert('Network error. Please try again.');
+                const modal = new bootstrap.Modal(document.getElementById('announcementModal'));
+                modal.show();
             }
-        }
 
-        // --- DELETE ---
-        function confirmDeleteAnnouncement(id) {
-            document.getElementById('deleteTargetId').value = id;
-            const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-            modal.show();
-        }
+            // Alias for inline onclick in cards
+            function editAnnouncement(id, title, content, priority) {
+                openAnnouncementModal(id, title, content, priority);
+            }
 
-        async function deleteAnnouncement() {
-            const id = document.getElementById('deleteTargetId').value;
-            if (!id) return;
+            async function saveAnnouncement() {
+                const id = document.getElementById('annEditId').value;
+                const title = document.getElementById('annTitle').value.trim();
+                const content = document.getElementById('annContent').value.trim();
+                const priority = document.getElementById('annPriority').value;
 
-            try {
-                const res = await fetch(`/api/announcements/${id}`, { method: 'DELETE' });
-                if (res.ok) {
-                    bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
-                    // Remove card from DOM with animation
-                    const card = document.getElementById(`announcement-${id}`);
-                    if (card) {
-                        card.style.transition = 'opacity 0.3s, transform 0.3s';
-                        card.style.opacity = '0';
-                        card.style.transform = 'translateX(30px)';
-                        setTimeout(() => {
-                            card.remove();
-                            // Show empty state if no more announcements
-                            const container = document.getElementById('announcementsContainer');
-                            if (container && container.querySelectorAll('.announcement-card').length === 0) {
-                                container.innerHTML = '<div class="announcement-empty" id="announcementEmpty"><p style="text-align:center; color: var(--gray); padding: 30px 0;">No announcements yet. Click <strong>+ New Announcement</strong> to create one.</p></div>';
-                            }
-                        }, 300);
+                if (!title || !content) {
+                    alert('Title and Content are required!');
+                    return;
+                }
+
+                const payload = { title, content, priority };
+
+                try {
+                    let res;
+                    if (id) {
+                        // UPDATE (PUT)
+                        res = await fetch(`/api/announcements/${id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                    } else {
+                        // CREATE (POST)
+                        res = await fetch('/api/announcements', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
                     }
-                } else {
-                    alert('Error deleting announcement.');
+
+                    if (res.ok) {
+                        // Close modal and refresh page to show new/updated data
+                        bootstrap.Modal.getInstance(document.getElementById('announcementModal')).hide();
+                        window.location.reload();
+                    } else {
+                        const err = await res.json();
+                        alert('Error: ' + (err.error || 'Could not save announcement'));
+                    }
+                } catch (e) {
+                    console.error('Save announcement error:', e);
+                    alert('Network error. Please try again.');
                 }
-            } catch (e) {
-                console.error('Delete announcement error:', e);
-                alert('Network error. Please try again.');
             }
-        }
-    </script>
+
+            // --- DELETE ---
+            function confirmDeleteAnnouncement(id) {
+                document.getElementById('deleteTargetId').value = id;
+                const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+                modal.show();
+            }
+
+            async function deleteAnnouncement() {
+                const id = document.getElementById('deleteTargetId').value;
+                if (!id) return;
+
+                try {
+                    const res = await fetch(`/api/announcements/${id}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
+                        // Remove card from DOM with animation
+                        const card = document.getElementById(`announcement-${id}`);
+                        if (card) {
+                            card.style.transition = 'opacity 0.3s, transform 0.3s';
+                            card.style.opacity = '0';
+                            card.style.transform = 'translateX(30px)';
+                            setTimeout(() => {
+                                card.remove();
+                                // Show empty state if no more announcements
+                                const container = document.getElementById('announcementsContainer');
+                                if (container && container.querySelectorAll('.announcement-card').length === 0) {
+                                    container.innerHTML = '<div class="announcement-empty" id="announcementEmpty"><p style="text-align:center; color: var(--gray); padding: 30px 0;">No announcements yet. Click <strong>+ New Announcement</strong> to create one.</p></div>';
+                                }
+                            }, 300);
+                        }
+                    } else {
+                        alert('Error deleting announcement.');
+                    }
+                } catch (e) {
+                    console.error('Delete announcement error:', e);
+                    alert('Network error. Please try again.');
+                }
+            }
+
+            // --- ALL LEADS SORTING ---
+            function sortAllLeads() {
+                const sort = document.getElementById('allLeadsSort').value;
+                const container = document.getElementById('allLeadsList');
+                if (!container) return;
+
+                const items = Array.from(container.querySelectorAll('.lead-item'));
+
+                items.sort((a, b) => {
+                    const scoreA = parseInt(a.dataset.score || 0);
+                    const scoreB = parseInt(b.dataset.score || 0);
+                    const nameA = a.dataset.name.toLowerCase();
+                    const nameB = b.dataset.name.toLowerCase();
+
+                    if (sort === 'score-desc') return scoreB - scoreA;
+                    if (sort === 'score-asc') return scoreA - scoreB;
+                    if (sort === 'name-asc') return nameA.localeCompare(nameB);
+                    if (sort === 'name-desc') return nameB.localeCompare(nameA);
+                    return 0;
+                });
+
+                // Re-append sorted items
+                items.forEach(item => container.appendChild(item));
+            }
+        </script>
 </body>
 
 </html>

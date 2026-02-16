@@ -26,6 +26,43 @@ class User(db.Model):
     profile_picture = db.Column(db.String(200), default='https://ui-avatars.com/api/?name=Admin&background=random')
     role = db.Column(db.String(20), default='agent') # super_admin, agent
     preferences = db.Column(db.Text, default='{}') # Stores dashboard layout/stats as JSON
+    last_active = db.Column(db.String(50))
+
+    @property
+    def status_display(self):
+        if not self.last_active:
+            return "Inactive"
+        try:
+            from datetime import datetime
+            last = datetime.strptime(self.last_active, '%Y-%m-%d %H:%M:%S')
+            now = datetime.now()
+            diff = now - last
+            minutes = divmod(diff.total_seconds(), 60)[0]
+            
+            if minutes < 5:
+                return "Active"
+            elif minutes < 60:
+                return f"Last active {int(minutes)} mins ago"
+            elif minutes < 1440:
+                return f"Last active {int(minutes // 60)} hours ago"
+            else:
+                return f"Last active {int(minutes // 1440)} days ago"
+        except:
+            return "Inactive"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+class PromotionRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    target_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    requester_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(20), default='pending') # pending, approved, rejected
+    approvals = db.Column(db.Text, default='[]') # JSON list of user_ids who approved
+    created_at = db.Column(db.String(50))
+    
+    target_user = db.relationship('User', foreign_keys=[target_user_id], backref='promotion_requests')
+    requester = db.relationship('User', foreign_keys=[requester_id], backref='sent_promotion_requests')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -125,6 +162,14 @@ class FAQ(db.Model):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+class FAQLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    faq_id = db.Column(db.Integer, db.ForeignKey('faq.id'))
+    clicked_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
 class Announcement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
@@ -185,20 +230,27 @@ class Notification(db.Model):
         super().__init__(**kwargs)
 
 # Helper to create notifications
-def create_notification(notif_type, title, message, icon='🔔', created_by=None, target_user_id=None):
+# Helper to create notifications
+def create_notification(notif_type, title, message, icon='🔔', created_by=None, target_user_id=None, target_roles=None):
     if created_by is None:
         created_by = session.get('user_name', 'System') if has_request_context() else 'System'
     
     from datetime import datetime
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     
+    u_ids = []
     if target_user_id:
         u_ids = [target_user_id]
+    elif target_roles:
+        # Target specific roles
+        users = User.query.filter(User.role.in_(target_roles)).all()
+        u_ids = [u.id for u in users]
     else:
         # Broadcast to all registered users
         u_ids = [u.id for u in User.query.all()]
         
     for uid in u_ids:
+        # Avoid duplicate notifications if logic overlaps, though set() would require hashable items
         notif = Notification(
             user_id=uid,
             type=notif_type,
@@ -227,6 +279,15 @@ def inject_user_preferences():
             except:
                 pass
     return dict(current_theme=theme)
+
+@app.template_filter('from_json')
+def from_json_filter(s):
+    import json
+    try:
+        if not s: return []
+        return json.loads(s)
+    except:
+        return []
 
 # Create tables logic
 def seed_admin():
@@ -442,6 +503,13 @@ def login():
 
 @app.route('/logout')
 def logout():
+    # Set user as inactive before clearing session
+    if session.get('user_id'):
+        user = User.query.get(session.get('user_id'))
+        if user:
+            user.last_active = None
+            db.session.commit()
+            
     session.clear()
     return redirect(url_for('login'))
 
@@ -452,10 +520,14 @@ def admin_create_account():
         return redirect(url_for('login'))
     
     current_user = User.query.get(session.get('user_id'))
-    if current_user.username != '252499L' and current_user.role != 'super_admin':
+    # Allow 'admin' role to view the page, but creation will be restricted
+    if current_user.username != '252499L' and current_user.role not in ['super_admin', 'admin']:
         return render_template('404.html'), 404
 
     if request.method == 'POST':
+        # Only super_admin can create accounts
+        if current_user.role != 'super_admin':
+             return render_template('404.html'), 403
         username = request.form.get('username')
         password = request.form.get('password')
         name = request.form.get('name')
@@ -489,9 +561,28 @@ def admin_create_account():
         db.session.add(new_user)
         db.session.commit()
         
+        # Notification logic
+        # Creation is restricted to super_admin, so we notify super_admins
+        notify_roles = ['super_admin']
+        create_notification(
+            'account', 
+            'New Account Created', 
+            f"Super Admin {current_user.name} created a new account for {username} ({role}).", 
+            target_roles=notify_roles
+        )
+        
         return render_template('create_account.html', success=f"Account for {username} created successfully!", users=User.query.all())
 
-    return render_template('create_account.html', users=User.query.all())
+
+
+    # Fetch pending promotion requests for super_admins
+    promotion_requests = []
+    total_super_admins = 0
+    if current_user.role == 'super_admin':
+        promotion_requests = PromotionRequest.query.filter_by(status='pending').all()
+        total_super_admins = User.query.filter_by(role='super_admin').count()
+
+    return render_template('create_account.html', users=User.query.all(), promotion_requests=promotion_requests, total_super_admins=total_super_admins)
 
 @app.route('/admin/delete-account/<int:user_id>', methods=['POST'])
 def admin_delete_account(user_id):
@@ -499,7 +590,7 @@ def admin_delete_account(user_id):
         return jsonify({'error': 'Unauthorized'}), 401
     
     current_user = User.query.get(session.get('user_id'))
-    if current_user.username != '252499L' and current_user.role != 'super_admin':
+    if current_user.role not in ['super_admin', 'admin']:
         return jsonify({'error': 'Forbidden'}), 403
 
     user_to_delete = User.query.get_or_404(user_id)
@@ -512,13 +603,34 @@ def admin_delete_account(user_id):
     if user_to_delete.username == '252499L':
         return jsonify({'error': 'Primary admin account cannot be deleted'}), 400
 
+    # Role-specific deletion rules
+    if current_user.role == 'super_admin':
+        # Super admin cannot delete other super admins
+        if user_to_delete.role == 'super_admin':
+            return jsonify({'error': 'Super Admins cannot delete other Super Admins'}), 403
+            
+    elif current_user.role == 'admin':
+        # Admin can ONLY delete agents (cannot delete admins or super_admins)
+        if user_to_delete.role in ['super_admin', 'admin']:
+             return jsonify({'error': 'Admins cannot delete Super Admins or other Admins'}), 403
+
     db.session.delete(user_to_delete)
     db.session.commit()
+    
+    # Notification logic
+    notify_roles = ['super_admin'] if current_user.role == 'super_admin' else ['super_admin', 'admin']
+    create_notification(
+        'account', 
+        'Account Deleted', 
+        f"{current_user.name} ({current_user.role}) deleted the account of {user_to_delete.username}.", 
+        target_roles=notify_roles
+    )
+    
     return jsonify({'success': True})
 
 @app.route('/api/admin/user/<int:user_id>')
 def api_admin_get_user(user_id):
-    if not session.get('logged_in') or session.get('user_role') != 'super_admin':
+    if not session.get('logged_in') or session.get('user_role') not in ['super_admin', 'admin']:
         return jsonify({'error': 'Unauthorized'}), 401
     
     user = User.query.get_or_404(user_id)
@@ -533,17 +645,83 @@ def api_admin_get_user(user_id):
 
 @app.route('/admin/edit-account/<int:user_id>', methods=['POST'])
 def admin_edit_account(user_id):
-    if not session.get('logged_in') or session.get('user_role') != 'super_admin':
+    if not session.get('logged_in') or session.get('user_role') not in ['super_admin', 'admin']:
         return redirect(url_for('login'))
     
+    current_user_role = session.get('user_role')
     user = User.query.get_or_404(user_id)
+    
+    # Admin Permission Check: Admins can only edit agents
+    if current_user_role == 'admin' and user.role != 'agent':
+        # Flash message usage would be better, but simple 403 string for now
+        return "Forbidden: Admins can only edit Agent accounts", 403
+
     user.name = request.form.get('name')
+    
+    # Notification Setup
+    changes_summary = []
+    
+    if user.name != request.form.get('name'):
+        changes_summary.append("name")
+    
+    # Only Super Admin can change roles
+    new_role = request.form.get('role')
+    
+    if current_user_role == 'super_admin' and new_role and new_role != user.role:
+        # Check for Promotion Request logic
+        if new_role == 'super_admin' and user.role != 'super_admin':
+            # Check how many super admins exist
+            super_admins = User.query.filter_by(role='super_admin').all()
+            if len(super_admins) > 1:
+                # Need approval process
+                # Check if request already exists
+                existing_req = PromotionRequest.query.filter_by(target_user_id=user.id, status='pending').first()
+                if not existing_req:
+                    import json
+                    from datetime import datetime
+                    
+                    # Create request
+                    req = PromotionRequest(
+                        target_user_id=user.id,
+                        requester_id=session.get('user_id'),
+                        status='pending',
+                        approvals=json.dumps([session.get('user_id')]), # Using json dumps for list
+                        created_at=datetime.now().strftime('%Y-%m-%d %H:%M')
+                    )
+                    db.session.add(req)
+                    
+                    # Notify OTHER super admins
+                    create_notification(
+                        'account', 
+                        'Promotion - Approval Needed', 
+                        f"Admin {session.get('user_name')} requested to promote {user.name} to Super Admin.", 
+                        target_roles=['super_admin']
+                    )
+                    
+                    db.session.commit()
+                    return render_template('create_account.html', 
+                                           info=f"Promotion request created for {user.name}. Waiting for approval from other Super Admins.", 
+                                           users=User.query.all(),
+                                           promotion_requests=PromotionRequest.query.filter_by(status='pending').all())
+                else:
+                    return render_template('create_account.html', 
+                                           error=f"A promotion request for {user.name} is already pending.", 
+                                           users=User.query.all(),
+                                           promotion_requests=PromotionRequest.query.filter_by(status='pending').all())
+            else:
+                 # Only 1 super admin (the current user), so just do it
+                 changes_summary.append(f"role to {new_role}")
+                 user.role = new_role
+        else:
+            changes_summary.append(f"role to {new_role}")
+            user.role = new_role
+    
     user.bio = request.form.get('bio')
-    user.role = request.form.get('role')
     
     new_password = request.form.get('password')
     if new_password:
         user.password = generate_password_hash(new_password)
+        changes_summary.append("password")
         
     file = request.files.get('profile_picture')
     if file and file.filename != '':
@@ -551,9 +729,86 @@ def admin_edit_account(user_id):
         unique_filename = f"profile_{user.username}_{int(datetime.now().timestamp())}_{filename}"
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
         user.profile_picture = unique_filename
+        changes_summary.append("profile picture")
         
     db.session.commit()
+    
+    # Send Notification if there were changes
+    # Note: We simply notify that an update occurred
+    if True: # Notify on any edit save
+        notify_roles = ['super_admin'] if current_user_role == 'super_admin' else ['super_admin', 'admin']
+        create_notification(
+            'account',
+            'Account Updated',
+            f"{session.get('user_name')} updated account details for {user.username}.",
+            target_roles=notify_roles
+        )
+
     return redirect(url_for('admin_create_account'))
+
+@app.route('/admin/approve-promotion/<int:req_id>', methods=['POST'])
+def approve_promotion(req_id):
+    if not session.get('logged_in') or session.get('user_role') != 'super_admin':
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    req = PromotionRequest.query.get_or_404(req_id)
+    current_uid = session.get('user_id')
+    import json
+    
+    approvals = json.loads(req.approvals)
+    if current_uid not in approvals:
+        approvals.append(current_uid)
+        req.approvals = json.dumps(approvals)
+        
+        # Check if we have unanimous approval from OTHER super admins
+        # Get all super admins
+        all_super_admins = User.query.filter_by(role='super_admin').all()
+        # We need ALL super admins to appear in the approvals list
+        
+        # The prompt says: "all other super admins must agree"
+        # Since the requester is a super admin and is implicitly in approvals (or we can add them manually),
+        # validation is: set(approvals) == set(all_super_admins_ids)
+        
+        all_sa_ids = set([u.id for u in all_super_admins])
+        approved_ids = set(approvals)
+        
+        if all_sa_ids.issubset(approved_ids):
+            # Promote!
+            req.status = 'approved'
+            req.target_user.role = 'super_admin'
+            
+            create_notification(
+                'account',
+                'Promotion Approved',
+                f"{req.target_user.name} has been promoted to Super Admin!",
+                target_roles=['super_admin', 'admin']
+            )
+        else:
+             # Just save the approval
+             pass
+        
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Approval recorded'})
+    
+    return jsonify({'success': True, 'message': 'Already approved'})
+
+@app.route('/admin/reject-promotion/<int:req_id>', methods=['POST'])
+def reject_promotion(req_id):
+    if not session.get('logged_in') or session.get('user_role') != 'super_admin':
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    req = PromotionRequest.query.get_or_404(req_id)
+    req.status = 'rejected'
+    db.session.commit()
+    
+    create_notification(
+        'account',
+        'Promotion Rejected',
+        f"Promotion request for {req.target_user.name} was rejected.",
+        target_roles=['super_admin']
+    )
+    
+    return jsonify({'success': True})
 
 @app.route('/profile', methods=['GET', 'POST'])
 def profile():
@@ -611,6 +866,13 @@ def require_login():
     if session.get('logged_in') and session.get('user_id'):
         user = User.query.get(session.get('user_id'))
         if user:
+            # Update last active
+            try:
+                user.last_active = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                db.session.commit()
+            except:
+                pass
+                
             session['user_role'] = user.role
             session['user_name'] = user.name
             session['user_pic'] = user.profile_picture
@@ -635,17 +897,27 @@ def dashboard():
         
     scored_sessions.sort(key=lambda x: x.calculated_score, reverse=True)
     high_value_leads = scored_sessions[:3] # User asked for High Value sections... template says Top 3
+    
+    # Filter for actively scored leads only
+    active_leads = [s for s in scored_sessions if s.calculated_score > 0]
 
     return render_template('admin_dashboard_main_hub.html', 
                            all_rules=all_rules, 
                            all_inquiries=all_inquiries,
                            all_announcements=all_announcements,
                            latest_chats=latest_chats,
-                           high_value_leads=high_value_leads)
+                           high_value_leads=high_value_leads,
+                           all_leads=active_leads)
 
 @app.route('/api/dashboard/stats')
 def dashboard_stats():
     """Returns all stat values and graph data for the customizable dashboard."""
+    from datetime import datetime, timedelta
+    now_dt = datetime.utcnow()
+    seven_days_ago = now_dt - timedelta(days=7)
+
+    faq_clicks_7d = FAQLog.query.filter(FAQLog.clicked_at >= seven_days_ago).count()
+
     total_customers = Customer.query.count()
     active_inquiries = Inquiry.query.filter(Inquiry.status != 'Resolved').count()
     total_inquiries = Inquiry.query.count()
@@ -690,6 +962,7 @@ def dashboard_stats():
             {"key": "scoring_rules", "label": "Scoring Rules", "value": f"{active_rules} / {total_rules}", "icon": "⚡", "color": "#a855f7"},
             {"key": "templates_count", "label": "Reply Templates", "value": total_templates, "icon": "💬", "color": "#f59e0b"},
             {"key": "faq_count", "label": "FAQs Published", "value": total_faqs, "icon": "❓", "color": "#06b6d4"},
+            {"key": "faq_clicks_7d", "label": "FAQ Clicks (7d)", "value": faq_clicks_7d, "icon": "📊", "color": "#f43f5e"},
             {"key": "conversion_rate", "label": "Conversion Rate", "value": "24.8%", "icon": "📈", "color": "#10b981"},
             {"key": "avg_response", "label": "Avg Response Time", "value": "2.4 min", "icon": "⏱️", "color": "#ec4899"},
         ],
@@ -1646,6 +1919,11 @@ def handle_single_faq(id):
 def increment_faq_click(id):
     faq = FAQ.query.get_or_404(id)
     faq.click_count += 1
+    
+    # Log the click for temporal stats
+    click_log = FAQLog(faq_id=id)
+    db.session.add(click_log)
+    
     db.session.commit()
     return jsonify(faq_to_dict(faq))
 
@@ -1849,6 +2127,9 @@ def get_announcements():
 
 @app.route('/api/announcements', methods=['POST'])
 def create_announcement():
+    if session.get('user_role') not in ['super_admin', 'admin']:
+        return jsonify({'error': 'Forbidden: Only admins can create announcements'}), 403
+        
     data = request.get_json()
     from datetime import datetime
     new_announcement = Announcement(
@@ -1871,6 +2152,9 @@ def create_announcement():
 
 @app.route('/api/announcements/<int:id>', methods=['PUT'])
 def update_announcement(id):
+    if session.get('user_role') not in ['super_admin', 'admin']:
+        return jsonify({'error': 'Forbidden: Only admins can edit announcements'}), 403
+
     announcement = Announcement.query.get_or_404(id)
     data = request.get_json()
     announcement.title = data.get('title', announcement.title)
@@ -1889,6 +2173,9 @@ def update_announcement(id):
 
 @app.route('/api/announcements/<int:id>', methods=['DELETE'])
 def delete_announcement(id):
+    if session.get('user_role') not in ['super_admin', 'admin']:
+        return jsonify({'error': 'Forbidden: Only admins can delete announcements'}), 403
+
     announcement = Announcement.query.get_or_404(id)
     db.session.delete(announcement)
     db.session.commit()

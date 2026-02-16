@@ -775,13 +775,13 @@
         <a href="/history" class="nav-link nav-history active">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') == 'super_admin' %}
+        {% if session.get('user_role') in ['super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">Manage Accounts</a>
         {% endif %}
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
-                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
-                    id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
+                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle" id="dropdownUser1"
+                    data-bs-toggle="dropdown" aria-expanded="false">
                     <div class="avatar-circle bg-primary text-white me-2"
                         style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">
                         {% if session.get('user_pic') and 'http' in session.get('user_pic') %}
@@ -844,6 +844,8 @@
                             <option value="oldest">🕐 Oldest First</option>
                             <option value="name-az">🔤 Name A-Z</option>
                             <option value="name-za">🔤 Name Z-A</option>
+                            <option value="score-high">🚀 Highest Score First</option>
+                            <option value="score-low">📉 Lowest Score First</option>
                         </select>
                     </div>
                 </div>
@@ -853,7 +855,8 @@
                     <div class="chat-list-item {% if loop.first %}active{% endif %} {% if s.is_lead %}has-keyword-match{% endif %}"
                         data-session-id="{{ s.id }}" data-name="{{ s.visitor_name }}"
                         data-pinned="{{ 'true' if s.pinned else 'false' }}" data-tags="{{ s.tags or '' }}"
-                        data-status="{{ s.status }}" onclick="selectChat({{ s.id }})">
+                        data-status="{{ s.status }}" onclick="selectChat({{ s.id }})"
+                        data-score="{{ s.calculated_score | int }}">
 
                         <div class="chat-time">
                             {% if s.chat_messages %}{{ s.chat_messages[-1].timestamp }}{% endif %}
@@ -1135,6 +1138,16 @@
                 }
             }
             markKeywordChats();
+
+            // Load sort preference
+            const savedSort = localStorage.getItem('chatSortPreference');
+            if (savedSort) {
+                const sortSelect = document.getElementById('chatSortSelect');
+                if (sortSelect) {
+                    sortSelect.value = savedSort;
+                    sortChatList();
+                }
+            }
         });
 
         // Close context menu on click outside
@@ -1150,6 +1163,8 @@
         // ===== SORT CHAT LIST =====
         function sortChatList() {
             const sort = document.getElementById('chatSortSelect').value;
+            localStorage.setItem('chatSortPreference', sort); // Save preference
+
             const container = document.getElementById('chatListScroll');
             const items = Array.from(container.querySelectorAll('.chat-list-item'));
 
@@ -1165,6 +1180,8 @@
                 if (sort === 'oldest') return parseInt(a.dataset.sessionId) - parseInt(b.dataset.sessionId);
                 if (sort === 'name-az') return a.dataset.name.localeCompare(b.dataset.name);
                 if (sort === 'name-za') return b.dataset.name.localeCompare(a.dataset.name);
+                if (sort === 'score-high') return parseInt(b.dataset.score || 0) - parseInt(a.dataset.score || 0);
+                if (sort === 'score-low') return parseInt(a.dataset.score || 0) - parseInt(b.dataset.score || 0);
                 return 0;
             });
 
@@ -1903,7 +1920,7 @@
             const editContainer = document.createElement('div');
             editContainer.className = 'edit-container';
             editContainer.innerHTML = `
-                <textarea class="form-control form-control-sm mb-1" rows="2" style="font-size:0.9em;">${currentText}</textarea>
+                <textarea class="form-control form-control-sm mb-1" style="font-size:0.9em; overflow:hidden; resize:none;">${currentText}</textarea>
                 <div class="d-flex justify-content-end gap-1">
                     <button class="btn btn-sm btn-gray py-0 px-2" style="font-size:0.75rem" onclick="cancelEdit(this)">Cancel</button>
                     <button class="btn btn-sm btn-blue py-0 px-2" style="font-size:0.75rem" onclick="saveMessageEdit(${msgId}, this)">Save</button>
@@ -1912,6 +1929,45 @@
 
             textDiv.style.display = 'none';
             textDiv.insertAdjacentElement('afterend', editContainer);
+
+            // Dynamic resize logic (Width & Height)
+            const textarea = editContainer.querySelector('textarea');
+
+            function autoResize() {
+                // 1. Calculate Width
+                // Create a temporary hidden span to measure text width
+                const span = document.createElement('span');
+                span.style.visibility = 'hidden';
+                span.style.whiteSpace = 'pre-wrap'; // specific to textarea behavior
+                span.style.font = window.getComputedStyle(textarea).font;
+                span.style.padding = window.getComputedStyle(textarea).padding;
+                span.innerText = textarea.value || textarea.placeholder;
+                document.body.appendChild(span);
+
+                // Get the width of the text + some padding
+                const textWidth = span.offsetWidth + 20;
+                document.body.removeChild(span);
+
+                // Constrain width: min 150px, max 100% of parent container
+                const maxWidth = textarea.parentElement.parentElement.offsetWidth; // approximate bubble width
+                let newWidth = Math.max(150, Math.min(textWidth, maxWidth));
+
+                textarea.style.width = newWidth + 'px';
+
+                // 2. Calculate Height
+                textarea.style.height = 'auto';
+                textarea.style.height = (textarea.scrollHeight + 2) + 'px';
+            }
+
+            // Set initial size
+            autoResize();
+
+            // Auto-resize on type
+            textarea.addEventListener('input', autoResize);
+
+            // Focus and cursor to end
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
             // Store original text
             editContainer.dataset.original = currentText;

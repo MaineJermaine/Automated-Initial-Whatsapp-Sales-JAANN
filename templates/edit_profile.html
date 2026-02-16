@@ -17,15 +17,15 @@
         <a href="/history" class="nav-link nav-history internal-link">Chat History</a>
         <a href="/repository" class="nav-link nav-repository internal-link">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring internal-link">Lead Scoring</a>
-        {% if session.get('user_role') == 'super_admin' %}
+        {% if session.get('user_role') in ['super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin internal-link">Manage Accounts</a>
         {% endif %}
 
         <!-- Sidebar Footer -->
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
             <div class="dropdown">
-                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
-                    id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
+                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle" id="dropdownUser1"
+                    data-bs-toggle="dropdown" aria-expanded="false">
                     <div class="avatar-circle bg-primary text-white me-2"
                         style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">
                         {% if session.get('user_pic') and 'http' in session.get('user_pic') %}
@@ -100,7 +100,7 @@
                                     <small class="text-muted">Username cannot be changed</small>
                                 </div>
                                 <div class="col-md-6">
-                                    <label for="name" class="form-label">Full Name</label>
+                                    <label for="name" class="form-label">Display Name</label>
                                     <input type="text" class="form-control" id="name" name="name"
                                         value="{{ user.name }}">
                                 </div>
