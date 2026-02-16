@@ -23,6 +23,7 @@ class User(db.Model):
     name = db.Column(db.String(100), default='Admin')
     bio = db.Column(db.Text, default='')
     profile_picture = db.Column(db.String(200), default='https://ui-avatars.com/api/?name=Admin&background=random')
+    preferences = db.Column(db.Text, default='{}') # Stores dashboard layout/stats as JSON
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -143,6 +144,7 @@ class ChatMessage(db.Model):
 
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     type = db.Column(db.String(30), nullable=False)  # announcement, customer, inquiry, rule
     title = db.Column(db.String(200), nullable=False)
     message = db.Column(db.Text, nullable=False)
@@ -155,24 +157,32 @@ class Notification(db.Model):
         super().__init__(**kwargs)
 
 # Helper to create notifications
-def create_notification(notif_type, title, message, icon='🔔', created_by=None):
+def create_notification(notif_type, title, message, icon='🔔', created_by=None, target_user_id=None):
     if created_by is None:
-        if has_request_context():
-            created_by = session.get('user_name', 'System')
-        else:
-            created_by = 'System'
+        created_by = session.get('user_name', 'System') if has_request_context() else 'System'
+    
     from datetime import datetime
-    notif = Notification(
-        type=notif_type,
-        title=title,
-        message=message,
-        icon=icon,
-        created_by=created_by,
-        created_at=datetime.now().strftime('%Y-%m-%d %H:%M')
-    )
-    db.session.add(notif)
+    now = datetime.now().strftime('%Y-%m-%d %H:%M')
+    
+    if target_user_id:
+        u_ids = [target_user_id]
+    else:
+        # Broadcast to all registered users
+        u_ids = [u.id for u in User.query.all()]
+        
+    for uid in u_ids:
+        notif = Notification(
+            user_id=uid,
+            type=notif_type,
+            title=title,
+            message=message,
+            icon=icon,
+            created_by=created_by,
+            created_at=now
+        )
+        db.session.add(notif)
+    
     db.session.commit()
-    return notif
 
 # Create tables logic
 def seed_admin():
@@ -184,6 +194,16 @@ def seed_admin():
             bio='System Administrator'
         )
         db.session.add(admin)
+        db.session.commit()
+    
+    # Create the second user account if it doesn't exist
+    if not User.query.filter_by(username='252435M').first():
+        new_user = User(
+            username='252435M',
+            password=generate_password_hash('akshaya')
+            # name, bio, profile_picture will use defaults
+        )
+        db.session.add(new_user)
         db.session.commit()
 
 with app.app_context():
@@ -1421,10 +1441,15 @@ def announcement_to_dict(a):
 
 @app.route('/api/notifications')
 def get_notifications():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'notifications': [], 'unread_count': 0})
+        
     from datetime import datetime, timedelta
-    # Get notifications from the past week
+    # Get notifications from the past week for THIS user
     one_week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M')
     notifications = Notification.query.filter(
+        Notification.user_id == user_id,
         Notification.created_at >= one_week_ago
     ).order_by(Notification.id.desc()).all()
     
@@ -1446,19 +1471,52 @@ def get_notifications():
 
 @app.route('/api/notifications/read', methods=['POST'])
 def mark_notifications_read():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+        
     data = request.get_json()
     notif_ids = data.get('ids', [])
     
     if notif_ids == 'all':
-        Notification.query.filter_by(is_read=False).update({'is_read': True})
+        Notification.query.filter_by(user_id=user_id, is_read=False).update({'is_read': True})
     else:
         for nid in notif_ids:
-            notif = Notification.query.get(nid)
+            notif = Notification.query.filter_by(id=nid, user_id=user_id).first()
             if notif:
                 notif.is_read = True
     
     db.session.commit()
     return jsonify({'ok': True})
+
+# --- 6. USER PREFERENCES API ---
+
+@app.route('/api/user/preferences', methods=['GET', 'POST'])
+def handle_preferences():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+        
+    import json
+    if request.method == 'POST':
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid data'}), 400
+        
+        user.preferences = json.dumps(data)
+        db.session.commit()
+        return jsonify({'success': True})
+    
+    # GET method
+    try:
+        prefs = json.loads(user.preferences) if user.preferences else {}
+    except:
+        prefs = {}
+    return jsonify(prefs)
 
 # --- Error Handlers ---
 @app.errorhandler(404)

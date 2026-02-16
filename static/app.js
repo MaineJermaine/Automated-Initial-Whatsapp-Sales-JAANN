@@ -94,15 +94,32 @@ function setupSearch() {
 window._dashboardData = null;
 window._chartInstances = {};
 
-function getDashboardConfig() {
-    const saved = localStorage.getItem('crm_dashboard_config');
-    if (saved) return JSON.parse(saved);
-    // Default: show everything
-    return null;
+window.crm_preferences = null;
+
+async function getDashboardConfig() {
+    if (window.crm_preferences) return window.crm_preferences;
+    try {
+        const res = await fetch('/api/user/preferences');
+        const data = await res.json();
+        window.crm_preferences = data;
+        return data;
+    } catch (e) {
+        console.error("Failed to fetch user preferences:", e);
+        return {};
+    }
 }
 
-function setDashboardConfig(config) {
-    localStorage.setItem('crm_dashboard_config', JSON.stringify(config));
+async function setDashboardConfig(config) {
+    window.crm_preferences = config;
+    try {
+        await fetch('/api/user/preferences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+    } catch (e) {
+        console.error("Failed to save user preferences:", e);
+    }
 }
 
 function isItemEnabled(config, category, key) {
@@ -113,10 +130,15 @@ function isItemEnabled(config, category, key) {
 
 async function loadDashboardData() {
     try {
-        const res = await fetch('/api/dashboard/stats');
-        window._dashboardData = await res.json();
-        renderDashboardStats();
-        renderDashboardGraphs();
+        // Fetch stats and preferences in parallel
+        const [statsRes, prefs] = await Promise.all([
+            fetch('/api/dashboard/stats'),
+            getDashboardConfig()
+        ]);
+
+        window._dashboardData = await statsRes.json();
+        renderDashboardStats(prefs);
+        renderDashboardGraphs(prefs);
     } catch (e) {
         console.error('Failed to load dashboard stats:', e);
         const loading = document.getElementById('statsLoading');
@@ -124,11 +146,11 @@ async function loadDashboardData() {
     }
 }
 
-function renderDashboardStats() {
+function renderDashboardStats(config) {
     const container = document.getElementById('statsRow');
     if (!container || !window._dashboardData) return;
 
-    const config = getDashboardConfig();
+    if (!config) config = {};
     const stats = window._dashboardData.solid_stats;
     const enabledStats = stats.filter(s => isItemEnabled(config, 'stats', s.key));
 
@@ -155,7 +177,7 @@ function renderDashboardStats() {
     `).join('');
 }
 
-function renderDashboardGraphs() {
+function renderDashboardGraphs(config) {
     const container = document.getElementById('graphsRow');
     if (!container || !window._dashboardData) return;
 
@@ -163,7 +185,7 @@ function renderDashboardGraphs() {
     Object.values(window._chartInstances).forEach(c => { try { c.destroy(); } catch (e) { } });
     window._chartInstances = {};
 
-    const config = getDashboardConfig();
+    if (!config) config = {};
     const graphs = window._dashboardData.graphs;
     const enabledGraphs = graphs.filter(g => isItemEnabled(config, 'graphs', g.key));
 
@@ -228,9 +250,9 @@ function renderDashboardGraphs() {
 
 // --- CUSTOMIZE MODAL LOGIC ---
 
-function openCustomizeModal() {
+async function openCustomizeModal() {
     if (!window._dashboardData) return;
-    const config = getDashboardConfig();
+    const config = await getDashboardConfig();
 
     // Populate Stats tab
     const statsList = document.getElementById('customizeStatsList');
@@ -278,7 +300,7 @@ function openCustomizeModal() {
     }
 }
 
-function saveDashboardConfig() {
+async function saveDashboardConfig() {
     const toggles = document.querySelectorAll('.customize-toggle');
     const config = { stats: {}, graphs: {} };
 
@@ -288,11 +310,11 @@ function saveDashboardConfig() {
         config[cat][key] = t.checked;
     });
 
-    setDashboardConfig(config);
+    await setDashboardConfig(config);
 
     // Re-render dashboard immediately
-    renderDashboardStats();
-    renderDashboardGraphs();
+    renderDashboardStats(config);
+    renderDashboardGraphs(config);
 
     // Close modal
     const modal = bootstrap.Modal.getInstance(document.getElementById('customizeModal'));
