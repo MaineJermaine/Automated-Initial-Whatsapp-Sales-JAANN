@@ -242,6 +242,28 @@
                             pattern="^[0-9\+\-\s\(\)]{6,20}$" title="6-20 characters; numbers and + - ( ) allowed.">
                     </div>
 
+                    <div class="form-group mb-3">
+                        <label for="custLocation">Location</label>
+                        <input type="text" class="form-control form-control-sm" id="custLocation">
+                    </div>
+
+                    <div class="form-group mb-3">
+                        <label class="fw-bold mb-2">Tags</label>
+                        <div class="tags-container mb-2"
+                            style="max-height: 100px; overflow-y: auto; border: 1px solid #dee2e6; padding: 8px; border-radius: 6px;">
+                            {% for tag, color in tags_inventory.items() %}
+                            <label class="d-inline-block me-2 mb-1" style="font-size: 0.85rem; cursor: pointer;">
+                                <input type="checkbox" name="newCustTags" value="{{ tag }}">
+                                <span class="badge"
+                                    style="background-color: {{ color }}40; color: #333; border: 1px solid {{ color }};">{{
+                                    tag }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <input type="text" class="form-control form-control-sm" id="custNewTag"
+                            placeholder="Add custom tag...">
+                    </div>
+
                     <div id="addCustError" class="text-danger small" role="alert" aria-live="polite"></div>
                 </div>
 
@@ -303,7 +325,18 @@
                 return;
             }
 
-            const payload = { name: first + ' ' + last, email, phone };
+            const location = document.getElementById("custLocation").value.trim();
+            const checkedTags = Array.from(document.querySelectorAll("input[name='newCustTags']:checked")).map(cb => cb.value);
+            const newTag = document.getElementById("custNewTag").value.trim();
+            if (newTag) checkedTags.push(newTag);
+
+            const payload = {
+                name: first + ' ' + last,
+                email,
+                phone,
+                location,
+                tags: checkedTags.join(',')
+            };
 
             btn.disabled = true;
             const prevText = btn.textContent;

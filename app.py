@@ -538,8 +538,9 @@ def api_create_customer():
         name=data.get('name'),
         email=data.get('email'),
         phone=data.get('phone'),
+        location=data.get('location'),
         status="Active",  # Default for new customers
-        tags="New"        # Default tag
+        tags=data.get('tags', 'New')
     )
     
     db.session.add(new_cust)
@@ -552,7 +553,7 @@ def api_create_customer():
         icon='👤'
     )
     
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "id": new_cust.id, "name": new_cust.name})
 
 @app.route('/api/customer/<int:id>/notes', methods=['PUT'])
 def api_update_customer_notes(id):
@@ -739,6 +740,8 @@ def api_chat_link_inquiry(session_id):
     db.session.commit()
     return jsonify({'ok': True})
 
+
+
 @app.route('/api/chat/message/<int:message_id>/delete', methods=['POST'])
 def api_chat_delete_message(message_id):
     msg = ChatMessage.query.get_or_404(message_id)
@@ -804,21 +807,51 @@ def inquiry_detail(id):
 @app.route('/api/inquiry/<int:id>/messages')
 def get_messages(id):
     inquiry = Inquiry.query.get_or_404(id)
+    
+    # If linked to a chat session, return THOSE messages
+    if inquiry.chat_sessions:
+        session = inquiry.chat_sessions[0]
+        messages = []
+        for m in session.chat_messages:
+            messages.append({
+                'sender': m.sender_name or m.sender_type,
+                'text': m.text,
+                'time': m.timestamp,
+                'is_agent': m.sender_type in ['agent', 'bot', 'system']
+            })
+        return jsonify(messages)
+    
+    # Fallback to old behavior (though UI hides it)
     messages = [{'sender': m.sender, 'text': m.text, 'time': m.time, 'is_agent': m.is_agent} for m in inquiry.messages]
     return jsonify(messages)
 
-# API to send a new message
 @app.route('/api/inquiry/<int:id>/message', methods=['POST'])
 def send_message(id):
+    inquiry = Inquiry.query.get_or_404(id)
     data = request.get_json()
-    new_msg = Message(
-        inquiry_id=id,
-        sender="Admin", # Or use data.get('sender')
-        text=data.get('text'),
-        time="Just now", # You can use datetime.now() for real timestamps
-        is_agent=True
-    )
-    db.session.add(new_msg)
+    from datetime import datetime
+    
+    if inquiry.chat_sessions:
+        session = inquiry.chat_sessions[0]
+        new_msg = ChatMessage(
+            session_id=session.id,
+            sender_type='agent',
+            sender_name='Admin',
+            text=data.get('text'),
+            timestamp=datetime.now().strftime('%I:%M %p')
+        )
+        db.session.add(new_msg)
+        session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+    else:
+        new_msg = Message(
+            inquiry_id=id,
+            sender="Admin",
+            text=data.get('text'),
+            time=datetime.now().strftime('%I:%M %p'),
+            is_agent=True
+        )
+        db.session.add(new_msg)
+        
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -1054,6 +1087,14 @@ def api_create_inquiry():
     )
     db.session.add(new_inquiry)
     db.session.commit()
+    
+    # Handle immediate linking to chat
+    linked_session_id = data.get('linked_session_id')
+    if linked_session_id:
+        chat = ChatSession.query.get(linked_session_id)
+        if chat:
+            chat.linked_inquiry_id = new_inquiry.id
+            db.session.commit()
     
     create_notification(
         'inquiry',

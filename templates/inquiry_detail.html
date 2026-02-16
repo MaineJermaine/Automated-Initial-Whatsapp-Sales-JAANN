@@ -67,12 +67,19 @@
             <div class="col-lg-7">
                 <div class="detail-card shadow-sm">
                     <h5 class="fw-bold mb-3">Chat Thread</h5>
+                    {% if inquiry.chat_sessions %}
                     <div id="chat-window" class="chat-container mb-3">
                     </div>
                     <div class="input-group">
                         <input type="text" id="msg-input" class="form-control" placeholder="Type a reply...">
                         <button class="btn btn-blue" onclick="sendMessage()">Send</button>
                     </div>
+                    {% else %}
+                    <div class="text-center p-5 bg-light rounded border">
+                        <p class="text-muted mb-3">Link to a chat first to view and continue the conversation.</p>
+                        <button class="btn btn-sm btn-blue" onclick="openLinkChatModal()">🔗 Link to Chat</button>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -155,13 +162,15 @@
         // inquiryId already declared above
 
         async function loadMessages() {
+            const container = document.getElementById('chat-window');
+            if (!container) return;
+
             const res = await fetch(`/api/inquiry/${inquiryId}/messages`);
             const messages = await res.json();
-            const container = document.getElementById('chat-window');
 
             container.innerHTML = messages.map(m => `
                 <div class="message-bubble ${m.is_agent ? 'agent-msg' : 'customer-msg'}">
-                    <div class="small fw-bold">${m.sender}</div>
+                    <div class="small fw-bold">${m.sender || 'Unknown'}</div>
                     <div>${m.text}</div>
                 </div>
             `).join('');
@@ -188,6 +197,7 @@
         setInterval(loadMessages, 3000);
         window.onload = loadMessages;
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 

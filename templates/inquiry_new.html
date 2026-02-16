@@ -11,55 +11,68 @@
 <body id="page-repository">
     <aside class="sidebar">
         <h2>CRM Admin</h2>
-        <a href="/dashboard" class="nav-link nav-dashboard active">Dashboard</a>
+        <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
-        <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
+        <a href="/repository" class="nav-link nav-repository active">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
     </aside>
 
     <main class="main">
-        <div class="header mb-4">
-            <h1 class="h3">Create New Inquiry</h1>
-            <a href="/repository" class="text-decoration-none small">← Back to Repository</a>
+        <div class="header">
+            <div class="header-left">
+                <a href="/repository" class="btn btn-gray">← Back</a>
+                <div>
+                    <h2 style="margin:0">Create New Inquiry</h2>
+                    <div style="color: var(--gray); font-size:0.85rem;">Create a new customer inquiry</div>
+                </div>
+            </div>
         </div>
 
-        <div class="card shadow-sm border-0 p-4" style="max-width: 800px;">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Customer Name</label>
-                    <input type="text" id="customer" class="form-control" placeholder="Enter name...">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Assigned Rep</label>
-                    <select id="rep" class="form-select">
-                        <option value="Karine">Karine</option>
-                        <option value="Winter">Winter</option>
-                        <option value="Giselle">Giselle</option>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Type</label>
-                    <select id="type" class="form-select">
-                        <option value="Sales">Sales</option>
-                        <option value="Support">Support</option>
-                        <option value="Product">Product</option>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Initial Status</label>
-                    <select id="status" class="form-select">
-                        <option value="New">New</option>
-                        <option value="Urgent">Urgent</option>
-                    </select>
-                </div>
-                <div class="col-12">
-                    <label class="form-label fw-bold">Description</label>
-                    <textarea id="description" class="form-control" rows="3"></textarea>
-                </div>
-                <div class="col-12 mt-4">
-                    <button class="btn btn-blue w-100" onclick="saveInquiry()">Create Inquiry</button>
+        <div class="form-center">
+            <div class="card form-card">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Customer Name</label>
+                        <input type="text" id="customer" class="form-control" placeholder="Enter name...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Assigned Rep</label>
+                        <select id="rep" class="form-select">
+                            <option value="Karine">Karine</option>
+                            <option value="Winter">Winter</option>
+                            <option value="Giselle">Giselle</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Type</label>
+                        <select id="type" class="form-select">
+                            <option value="Sales">Sales</option>
+                            <option value="Support">Support</option>
+                            <option value="Product">Product</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Initial Status</label>
+                        <select id="status" class="form-select">
+                            <option value="New">New</option>
+                            <option value="Urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Link to Chat (Optional)</label>
+                        <select id="linked_chat" class="form-select">
+                            <option value="">-- None --</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Description</label>
+                        <textarea id="description" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="col-12 mt-4">
+                        <button class="btn btn-blue w-100" onclick="saveInquiry()">Create Inquiry</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -72,6 +85,7 @@
                 assigned_rep: document.getElementById('rep').value,
                 inquiry_type: document.getElementById('type').value,
                 status: document.getElementById('status').value,
+                linked_session_id: document.getElementById('linked_chat').value,
                 description: document.getElementById('description').value
             };
 
@@ -89,6 +103,23 @@
                 alert("Error creating inquiry");
             }
         }
+
+        async function loadChats() {
+            try {
+                const res = await fetch('/api/chat/sessions');
+                const data = await res.json();
+                const select = document.getElementById('linked_chat');
+                data.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = `${s.visitor_name} (${s.visitor_email || 'No Email'}) - ${s.status}`;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error("Failed to load chats", e);
+            }
+        }
+        window.onload = loadChats;
     </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

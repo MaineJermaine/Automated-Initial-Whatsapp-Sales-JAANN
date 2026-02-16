@@ -873,17 +873,53 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">Select a customer to link to this conversation.</p>
-                    <select class="form-select" id="linkCustomerSelect">
-                        <option value="">-- None --</option>
-                        {% for c in customers %}
-                        <option value="{{ c.id }}">{{ c.name }} ({{ c.email }})</option>
-                        {% endfor %}
-                    </select>
+                    <ul class="nav nav-tabs mb-3" id="linkCustomerTabs">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabLinkExistingCust"
+                                type="button">Existing</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCreateNewCust"
+                                type="button">Create New</button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <!-- LINK EXISTING -->
+                        <div class="tab-pane fade show active" id="tabLinkExistingCust">
+                            <p class="small text-muted">Select a customer to link to this conversation.</p>
+                            <select class="form-select" id="linkCustomerSelect">
+                                <option value="">-- None --</option>
+                                {% for c in customers %}
+                                <option value="{{ c.id }}">{{ c.name }} ({{ c.email }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- CREATE NEW -->
+                        <div class="tab-pane fade" id="tabCreateNewCust">
+                            <div class="mb-2">
+                                <label class="small text-muted">First Name</label>
+                                <input type="text" class="form-control form-control-sm" id="newCustFirst">
+                            </div>
+                            <div class="mb-2">
+                                <label class="small text-muted">Last Name</label>
+                                <input type="text" class="form-control form-control-sm" id="newCustLast">
+                            </div>
+                            <div class="mb-2">
+                                <label class="small text-muted">Email</label>
+                                <input type="email" class="form-control form-control-sm" id="newCustEmail">
+                            </div>
+                            <div class="mb-2">
+                                <label class="small text-muted">Phone</label>
+                                <input type="text" class="form-control form-control-sm" id="newCustPhone">
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-blue" onclick="linkCustomer()">Link</button>
+                    <button class="btn btn-blue" onclick="handleLinkCustomer()">Link / Create</button>
                 </div>
             </div>
         </div>
@@ -898,18 +934,55 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted">Select an inquiry to attach to this conversation.</p>
-                    <select class="form-select" id="linkInquirySelect">
-                        <option value="">-- None --</option>
-                        {% for i in inquiries %}
-                        <option value="{{ i.id }}">INQ-{{ "%03d"|format(i.id) }}: {{ i.customer }} ({{ i.status }})
-                        </option>
-                        {% endfor %}
-                    </select>
+                    <ul class="nav nav-tabs mb-3" id="linkInquiryTabs">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabLinkExistingInq"
+                                type="button">Existing</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCreateNewInq"
+                                type="button">Create New</button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <!-- LINK EXISTING -->
+                        <div class="tab-pane fade show active" id="tabLinkExistingInq">
+                            <p class="small text-muted">Select an inquiry to attach to this conversation.</p>
+                            <select class="form-select" id="linkInquirySelect">
+                                <option value="">-- None --</option>
+                                {% for i in inquiries %}
+                                <option value="{{ i.id }}">INQ-{{ "%03d"|format(i.id) }}: {{ i.customer }} ({{ i.status
+                                    }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- CREATE NEW -->
+                        <div class="tab-pane fade" id="tabCreateNewInq">
+                            <div class="mb-2">
+                                <label class="small text-muted">Customer Name</label>
+                                <input type="text" class="form-control form-control-sm" id="newInqCustomer">
+                            </div>
+                            <div class="mb-2">
+                                <label class="small text-muted">Type</label>
+                                <select class="form-select form-select-sm" id="newInqType">
+                                    <option value="General">General</option>
+                                    <option value="Support">Support</option>
+                                    <option value="Sales">Sales</option>
+                                    <option value="Billing">Billing</option>
+                                </select>
+                            </div>
+                            <div class="mb-2">
+                                <label class="small text-muted">Description</label>
+                                <textarea class="form-control form-control-sm" id="newInqDesc" rows="2"></textarea>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
-                    <button class="btn btn-blue" onclick="linkInquiry()">Link</button>
+                    <button class="btn btn-blue" onclick="handleLinkInquiry()">Link / Create</button>
                 </div>
             </div>
         </div>
@@ -1400,56 +1473,116 @@
             modal.show();
         }
 
-        async function linkCustomer() {
-            const select = document.getElementById('linkCustomerSelect');
-            const customerId = select.value ? parseInt(select.value) : null;
+        async function handleLinkCustomer() {
+            const activeTab = document.querySelector('#linkCustomerTabs .nav-link.active');
+            const mode = activeTab ? activeTab.textContent.trim() : 'Existing';
 
+            if (mode === 'Existing') {
+                const select = document.getElementById('linkCustomerSelect');
+                const customerId = select.value ? parseInt(select.value) : null;
+                await linkCustomerById(customerId);
+            } else {
+                const first = document.getElementById('newCustFirst').value.trim();
+                const last = document.getElementById('newCustLast').value.trim();
+                const email = document.getElementById('newCustEmail').value.trim();
+                const phone = document.getElementById('newCustPhone').value.trim();
+
+                if (!first || !last || !email) {
+                    alert('First Name, Last Name, and Email are required.');
+                    return;
+                }
+
+                const res = await fetch('/api/customer/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: first + ' ' + last, email, phone })
+                });
+                const data = await res.json();
+
+                if (data.ok && data.id) {
+                    await linkCustomerById(data.id);
+                    location.reload();
+                } else {
+                    alert('Error creating customer: ' + (data.error || 'Unknown error'));
+                }
+            }
+        }
+
+        async function linkCustomerById(customerId) {
             await fetch(`/api/chat/session/${currentSessionId}/link-customer`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ customer_id: customerId })
             });
-
-            const badge = document.getElementById('linkedCustomerBadge');
-            if (customerId) {
-                const name = select.options[select.selectedIndex].text;
-                badge.className = 'chat-link-badge';
-                badge.textContent = '👤 ' + name;
-            } else {
-                badge.className = 'chat-link-badge unlinked';
-                badge.textContent = '👤 No customer linked';
+            const modalEl = document.getElementById('linkCustomerModal');
+            bootstrap.Modal.getInstance(modalEl).hide();
+            // Refresh to show changes if not reloading
+            if (!document.querySelector('#linkCustomerTabs .nav-link.active').textContent.includes('Create')) {
+                selectChat(currentSessionId);
             }
-
-            bootstrap.Modal.getInstance(document.getElementById('linkCustomerModal')).hide();
         }
 
         // ===== LINK INQUIRY =====
         function openLinkInquiryModal() {
             const modal = new bootstrap.Modal(document.getElementById('linkInquiryModal'));
             modal.show();
+            // Autofill customer name from chat if empty
+            const name = document.getElementById('chatHeaderName').textContent.trim();
+            const inqNameInput = document.getElementById('newInqCustomer');
+            if (name && !inqNameInput.value) {
+                inqNameInput.value = name;
+            }
         }
 
-        async function linkInquiry() {
-            const select = document.getElementById('linkInquirySelect');
-            const inquiryId = select.value ? parseInt(select.value) : null;
+        async function handleLinkInquiry() {
+            const activeTab = document.querySelector('#linkInquiryTabs .nav-link.active');
+            const mode = activeTab ? activeTab.textContent.trim() : 'Existing';
 
+            if (mode === 'Existing') {
+                const select = document.getElementById('linkInquirySelect');
+                const inquiryId = select.value ? parseInt(select.value) : null;
+                await linkInquiryById(inquiryId);
+            } else {
+                const customer = document.getElementById('newInqCustomer').value.trim();
+                const type = document.getElementById('newInqType').value;
+                const desc = document.getElementById('newInqDesc').value.trim();
+
+                if (!customer || !desc) {
+                    alert('Customer Name and Description are required.');
+                    return;
+                }
+
+                const res = await fetch('/api/inquiry/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        customer: customer,
+                        inquiry_type: type,
+                        description: desc,
+                        status: 'New',
+                        linked_session_id: currentSessionId // Auto-links
+                    })
+                });
+                const data = await res.json();
+
+                if (data.ok) {
+                    location.reload();
+                } else {
+                    alert('Error creating inquiry.');
+                }
+            }
+        }
+
+        async function linkInquiryById(inquiryId) {
             await fetch(`/api/chat/session/${currentSessionId}/link-inquiry`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ inquiry_id: inquiryId })
             });
 
-            const badge = document.getElementById('linkedInquiryBadge');
-            if (inquiryId) {
-                const label = select.options[select.selectedIndex].text;
-                badge.className = 'chat-link-badge';
-                badge.textContent = '📋 ' + label;
-            } else {
-                badge.className = 'chat-link-badge unlinked';
-                badge.textContent = '📋 No inquiry linked';
-            }
-
-            bootstrap.Modal.getInstance(document.getElementById('linkInquiryModal')).hide();
+            const modalEl = document.getElementById('linkInquiryModal');
+            bootstrap.Modal.getInstance(modalEl).hide();
+            selectChat(currentSessionId);
         }
 
         // ===== UPDATE LINKED BADGES =====
