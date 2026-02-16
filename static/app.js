@@ -198,16 +198,55 @@ function renderDashboardGraphs(config) {
     let colClass = 'col-12 col-lg-6';
     if (enabledGraphs.length === 1) colClass = 'col-12';
 
-    container.innerHTML = enabledGraphs.map(g => `
-        <div class="${colClass} graph-card-wrapper" data-graph-key="${g.key}">
-            <div class="card graph-card" style="padding: 25px;">
-                <h3 style="margin-top:0; color: var(--slate-900); font-size: 1.05rem; margin-bottom: 15px;">${g.label}</h3>
-                <div style="height: ${g.type === 'doughnut' ? '260px' : '220px'}; position: relative;">
-                    <canvas id="chart-${g.key}"></canvas>
+    container.innerHTML = enabledGraphs.map(g => {
+        if (g.type === 'doughnut') {
+            const total = g.datasets[0].data.reduce((a, b) => a + b, 0);
+            const breakdownHtml = g.labels.map((label, i) => {
+                const val = g.datasets[0].data[i];
+                const color = g.datasets[0].backgroundColor[i];
+                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                return `
+                    <div class="breakdown-item">
+                        <div class="breakdown-label">
+                            <span class="breakdown-dot" style="background-color: ${color}"></span>
+                            ${label}
+                        </div>
+                        <div class="breakdown-value">
+                            <strong>${val}</strong>
+                            <span class="breakdown-percent">(${pct}%)</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="${colClass} graph-card-wrapper" data-graph-key="${g.key}">
+                    <div class="card graph-card" style="padding: 25px; min-height: 350px;">
+                        <h3 style="margin-top:0; color: var(--slate-900); font-size: 1.05rem; margin-bottom: 20px;">${g.label}</h3>
+                        <div class="doughnut-layout">
+                            <div class="doughnut-chart-container" style="height: 250px; position: relative;">
+                                <canvas id="chart-${g.key}"></canvas>
+                            </div>
+                            <div class="doughnut-breakdown">
+                                ${breakdownHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="${colClass} graph-card-wrapper" data-graph-key="${g.key}">
+                <div class="card graph-card" style="padding: 25px;">
+                    <h3 style="margin-top:0; color: var(--slate-900); font-size: 1.05rem; margin-bottom: 15px;">${g.label}</h3>
+                    <div style="height: 220px; position: relative;">
+                        <canvas id="chart-${g.key}"></canvas>
+                    </div>
                 </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
     // Create Chart.js instances
     enabledGraphs.forEach(g => {
@@ -235,7 +274,7 @@ function renderDashboardGraphs(config) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: g.type === 'doughnut', position: 'bottom' }
+                    legend: { display: g.type !== 'doughnut', position: 'bottom' }
                 },
                 ...(g.type !== 'doughnut' ? {
                     scales: {
