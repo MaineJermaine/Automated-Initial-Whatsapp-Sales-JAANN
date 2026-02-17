@@ -35,6 +35,15 @@
             display: inline-block;
             margin-right: 6px;
         }
+        .card {
+            transition: none !important;
+        }
+
+        .card:hover {
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
     </style>
 
 </head>
@@ -89,6 +98,19 @@
     </aside>
 
     <main class="main">
+        <!-- FLASH MESSAGES -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-container">
+            {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">
+                <span>{{ message }}</span>
+                <button onclick="this.parentElement.remove()">✕</button>
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+        {% endwith %}
 
         <a href="/customers" class="text-decoration-none small">← Back</a>
 
@@ -169,13 +191,17 @@
                     </div>
 
                     <div class="d-flex gap-2">
-                        <a href="https://wa.me/{{ c.phone | replace(' ', '') | replace('+', '') }}" target="_blank"
-                            class="btn btn-success btn-sm">
-                            Reply on WhatsApp
-                        </a>
-                        <a href="{{ url_for('edit_customer', id=c.id) }}" class="btn btn-info btn-sm">Edit</a>
-                        <button class="btn btn-danger btn-sm" onclick="confirmDelete({{ c.id }})">Delete</button>
-                    </div>
+                        <button class="btn btn-primary btn-sm" type="button" onclick="goToCustomerChat()">
+                            Link to Chat
+                        </button>
+                         <a href="{{ url_for('edit_customer', id=c.id) }}" class="btn btn-info btn-sm">Edit</a>
+                         <form method="POST" action="/customer/{{ c.id }}/delete" style="display:inline;">
+                         <button class="btn btn-danger btn-sm" type="submit"
+                             onclick="return confirm('Delete this customer?')">
+                             Delete
+                         </button>
+                         </form>
+                     </div>
 
                 </div>
             </div>
@@ -271,7 +297,12 @@
         function executeDeleteCustomer(id) {
             document.getElementById('confirmOverlay').style.display = 'none';
             fetch(`/customer/${id}/delete`, { method: "POST" })
-                .then(() => window.location = "/customers");
+                .then(() => {
+                    fetch(`/customer/${id}/delete`, { method: "POST" })
+                    .then(() => window.location = "/customers");
+                    window.location = "/customers";
+                });
+
         }
     </script>
 
@@ -356,9 +387,33 @@
         </div>
     </div>
 
+    <!-- Add Link to Chat modal + scripts -->
+    <div class="modal fade" id="linkChatModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">💬 Link Customer to Chat</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">Select a chat conversation to link this customer to.</p>
+                    <select class="form-select" id="chatSessionSelect">
+                        <option value="">-- Select a chat --</option>
+                    </select>
+                    <div id="chatLoadingMsg" class="text-muted small mt-2">Loading chats...</div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
+                    <button class="btn btn-blue" onclick="linkToChat()">Link</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const customerName = {{ c.name | tojson }};
         const customerId = {{ c.id | tojson }};
+        const customerEmail = {{ c.email | tojson }};
 
         async function openLinkInquiryModal() {
             const modal = new bootstrap.Modal(document.getElementById('linkInquiryModal'));
@@ -428,9 +483,88 @@
             if (res.ok) location.reload();
             else alert('Failed to create inquiry.');
         }
+
+        // Try to auto-navigate to a chat session linked to this customer.
+        // Falls back to the Link Chat modal if none found.
+        async function goToCustomerChat() {
+            try {
+                const res = await fetch('/api/chat/sessions');
+                if (!res.ok) return openLinkChatModal();
+                const sessions = await res.json();
+
+                const match = sessions.find(s =>
+                    s.linked_customer_id === customerId ||
+                    (s.visitor_email && s.visitor_email === customerEmail) ||
+                    (s.visitor_name && s.visitor_name === customerName)
+                );
+
+                if (match) {
+                    window.location.href = `/history?session=${match.id}`;
+                } else {
+                    openLinkChatModal();
+                }
+            } catch (err) {
+                console.error(err);
+                openLinkChatModal();
+            }
+        }
+
+        async function openLinkChatModal() {
+            const modal = new bootstrap.Modal(document.getElementById('linkChatModal'));
+            modal.show();
+
+            const res = await fetch('/api/chat/sessions');
+            chatSessions = await res.json();
+
+            const select = document.getElementById('chatSessionSelect');
+            const loadingMsg = document.getElementById('chatLoadingMsg');
+
+            select.innerHTML = '<option value="">-- Select a chat --</option>';
+            chatSessions.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = `${s.visitor_name} (${s.visitor_email || 'No Email'}) - ${s.status}`;
+                if (s.linked_customer_id === customerId) {
+                    opt.textContent += ' ✓ Already linked';
+                    opt.selected = true;
+                }
+                select.appendChild(opt);
+            });
+
+            loadingMsg.style.display = 'none';
+        }
+
+        async function linkToChat() {
+            const select = document.getElementById('chatSessionSelect');
+            const sessionId = select.value;
+
+            if (!sessionId) {
+                alert('Please select a chat session.');
+                return;
+            }
+
+            const res = await fetch(`/api/chat/session/${sessionId}/link-customer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customer_id: customerId })
+            });
+
+            if (res.ok) {
+                // close modal and give simple feedback
+                bootstrap.Modal.getInstance(document.getElementById('linkChatModal')).hide();
+                location.reload();
+            } else {
+                alert('Failed to link customer to chat.');
+            }
+        }
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    setTimeout(() => {
+        document.querySelectorAll(".flash").forEach(el => el.remove());
+    }, 4000);
+    </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 

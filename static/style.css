@@ -213,9 +213,8 @@ td {
 
 .customer-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    grid-template-columns: repeat(4,1fr);
     gap: 18px;
-    margin-top: 20px;
 }
 
 .card-link {
@@ -223,22 +222,29 @@ td {
     color: inherit;
 }
 
+#page-customers .main {
+    background: #f3f2e9;
+}
+
 /* CARD LOOK */
 
 .customer-card {
     display: flex;
+    height: 100%;
     justify-content: space-between;
     align-items: center;
     background: #ffffff;
     border: 1px solid #d1d5db;
     border-radius: 14px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    padding: 18px 22px;
+    padding: 12px 16px;
     transition: 0.2s ease;
+    min-height: 120px;
 }
 
 .customer-card:hover {
-    background: #eef2f7;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 /* LEFT SIDE */
@@ -246,19 +252,20 @@ td {
 .customer-left {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
+    flex: 1;
 }
 
 /* AVATAR */
 
 .avatar-circle {
-    width: 44px;
-    height: 44px;
+    width: 42px;
+    height: 42px;
     border-radius: 10px;
     background: #3b82f6;
     color: white;
     font-weight: 600;
-    font-size: 15px;
+    font-size: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -269,6 +276,9 @@ td {
 .customer-name {
     font-weight: 600;
     font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .customer-id {
@@ -283,7 +293,6 @@ td {
 }
 
 /* CENTER EDIT FORM */
-
 .form-center {
     display: flex;
     justify-content: center;
@@ -293,6 +302,49 @@ td {
 .form-card {
     width: 100%;
     max-width: 700px;
+}
+/* FLASH MESSAGES */
+
+.flash-container {
+    position: fixed;
+    top: 20px;
+    right: 25px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.flash {
+    min-width: 260px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    animation: slideIn 0.25s ease;
+}
+
+.flash button {
+    border: none;
+    background: transparent;
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.flash button:hover { opacity: 1; }
+
+.flash-success { background: #e6f9f0; color: #047857; }
+.flash-danger { background: #fde8e8; color: #b91c1c; }
+.flash-warning { background: #fff7ed; color: #c2410c; }
+.flash-info { background: #eef2ff; color: #3730a3; }
+
+@keyframes slideIn {
+    from { transform: translateX(40px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
 }
 
 /* HEADER LAYOUT */
@@ -373,6 +425,26 @@ td {
     cursor: pointer;
     transition: 0.2s ease;
 }
+.filter-tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid #ddd;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.filter-pill input {
+    margin: 0;
+}
 
 /* Hover effect */
 
@@ -443,6 +515,108 @@ td {
 .page-dots {
     padding: 8px 10px;
     color: #94a3b8;
+}
+.btn-green,
+.btn-gray,
+.btn-blue {
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+/* Save Changes button */
+.btn-green {
+    background-color: #22c55e !important;
+    color: white !important;
+}
+
+.btn-green:hover {
+    background-color: #16a34a !important;
+}
+
+/* Cancel button */
+.btn-gray {
+    background-color: #f1f5f9 !important;
+    color: #374151 !important;
+    border: 1px solid #d1d5db !important;
+}
+
+.btn-gray:hover {
+    background-color: #e5e7eb !important;
+}
+
+/* Link chat button */
+.btn-blue {
+    background-color: #3b82f6 !important;
+    color: white !important;
+}
+
+.btn-blue:hover {
+    background-color: #2563eb !important;
+}
+/* Error highlight */
+.form-control.is-invalid,
+input.is-invalid,
+textarea.is-invalid {
+    border-color: #dc3545 !important;
+    padding-right: 40px;
+}
+
+/* Warning icon inside field */
+input.is-invalid,
+textarea.is-invalid {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23dc3545' viewBox='0 0 16 16'%3E%3Cpath d='M7.938 2.016a.13.13 0 0 1 .125 0l6.857 3.94c.11.063.18.181.18.31v7.468a.35.35 0 0 1-.18.31l-6.857 3.94a.13.13 0 0 1-.125 0l-6.857-3.94a.35.35 0 0 1-.18-.31V6.266c0-.129.07-.247.18-.31l6.857-3.94zM8 5c-.535 0-.954.462-.9.995l.35 3.507a.55.55 0 0 0 1.1 0l.35-3.507A.905.905 0 0 0 8 5zm.002 6a.998.998 0 1 0 0 1.996.998.998 0 0 0 0-1.996z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 18px;
+}
+/* --- TOAST NOTIFICATIONS --- */
+.site-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 280px;
+    max-width: 400px;
+    background: #16a34a;
+    color: white;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    animation: slideIn .3s ease;
+}
+
+.site-toast.hidden {
+    display: none;
+}
+
+.toast-content {
+    padding: 14px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.9rem;
+}
+
+.toast-close {
+    border: none;
+    background: transparent;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
 /* --- PROFILE & CHAT COMPONENTS --- */
@@ -955,15 +1129,19 @@ input:checked+.slider:before {
 .filter-pill {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-radius: 10px;
-    border: 1px solid #e6eef6;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
     background: #fff;
     cursor: pointer;
-    user-select: none;
-    transition: background .12s, border-color .12s, transform .06s;
+    margin: 4px;
 }
+
+.filter-pill input {
+    margin: 0;
+}
+
 
 .filter-pill:hover {
     background: #f0f9ff;

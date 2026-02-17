@@ -6,6 +6,39 @@
     <title>Customers</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .filter-tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .filter-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #f1f5f9;
+            color: #0f172a;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        .filter-pill input[type="checkbox"] {
+            margin: 0;
+            width: 16px;
+            height: 16px;
+            accent-color: #0d6efd;
+        }
+        .filter-pill input[type="checkbox"]:checked + span {
+            font-weight: 600;
+        }
+        #filterModal .modal-body {
+            max-height: 60vh;
+            overflow: auto;
+        }
+    </style>
     <script>
         window.backendSearchSeed = {{ search_seed | tojson }};
     </script>
@@ -61,6 +94,19 @@
     </aside>
 
     <main class="main">
+        <!-- FLASH MESSAGES -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-container">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">
+                    <span>{{ message }}</span>
+                    <button onclick="this.parentElement.remove()">✕</button>
+                    </div>
+                {% endfor %}
+                </div>
+            {% endif %}
+            {% endwith %}
         <div class="d-flex justify-content-between align-items-center mb-4">
 
             <div>
@@ -86,9 +132,12 @@
                     Export
                 </a>
 
-                <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#filterModal">
+                <button class="btn btn-gray btn-sm d-flex align-items-center gap-1"
+                        data-bs-toggle="modal"
+                        data-bs-target="#filterModal">
                     Filters
                 </button>
+
 
             </div>
         </div>
@@ -105,17 +154,20 @@
 
                     <div class="modal-body">
 
-                        <label class="fw-bold mb-2">Filter by Tags</label>
+                        <label class="fw-bold d-block mb-2">Filter by Tags</label>
 
                         <div class="filter-tags-container">
                             {% for tag, color in tags_inventory.items() %}
-                            <label class="filter-pill" style="border:1px solid;">
-                                <input type="checkbox" name="filterTags" value="{{ tag }}" {% if tag in selected_tags
-                                    %}checked{% endif %}>
-                                {{ tag }}
+                            <label class="filter-pill">
+                                <input type="checkbox"
+                                    name="filterTags"
+                                    value="{{ tag }}"
+                                    {% if tag in selected_tags %}checked{% endif %}>
+                                <span>{{ tag }}</span>
                             </label>
                             {% endfor %}
                         </div>
+
 
                         <hr class="my-3">
 
@@ -174,7 +226,7 @@
         </div>
 
         <!-- PAGINATION -->
-        {% if pagination.pages > 1 %}
+        {% if pagination.pages > 0 %}
         <div class="pagination-wrapper">
             {% if pagination.has_prev %}
             <a href="{{ url_for('customers', page=pagination.prev_num) }}" class="page-btn">« Prev</a>
@@ -227,8 +279,8 @@
                             {% if c.tags %}
                             {% for tag in c.tags.split(',') %}
                             <span class="tag" style="background: {{ tag_colors.get(tag, '#ccc') }}20;
-               color: {{ tag_colors.get(tag, '#555') }};
-               border:1px solid {{ tag_colors.get(tag, '#ccc') }};">
+                                                    color: {{ tag_colors.get(tag, '#555') }};
+                                                    border:1px solid {{ tag_colors.get(tag, '#ccc') }};">
                                 {{ tag }}
                             </span>
                             {% endfor %}
@@ -266,23 +318,29 @@
                         <label for="custFirst">First Name *</label>
                         <input type="text" class="form-control form-control-sm" id="custFirst" required
                             pattern="^[A-Za-z\s'\-]+$" title="Letters, spaces, hyphens and apostrophes only.">
+                        <div class="invalid-feedback" id="errFirst"></div>
                     </div>
 
                     <div class="form-group mb-3">
                         <label for="custLast">Last Name *</label>
                         <input type="text" class="form-control form-control-sm" id="custLast" required
                             pattern="^[A-Za-z\s'\-]+$" title="Letters, spaces, hyphens and apostrophes only.">
+                        <div class="invalid-feedback" id="errLast"></div>
                     </div>
 
                     <div class="form-group mb-3">
                         <label for="custEmail">Email *</label>
-                        <input type="email" class="form-control form-control-sm" id="custEmail" required>
+                        <input type="email" class="form-control form-control-sm" id="custEmail" required
+                            pattern="^[^@]+@[^@]+\.[^@]+$" title="Must be a valid email address.">
+                        <div class="invalid-feedback" id="errEmail"></div>
+
                     </div>
 
                     <div class="form-group mb-3">
                         <label for="custPhone">Phone</label>
-                        <input type="tel" class="form-control form-control-sm" id="custPhone"
+                        <input type="tel" class="form-control form-control-sm" id="custPhone" required
                             pattern="^[0-9\+\-\s\(\)]{6,20}$" title="6-20 characters; numbers and + - ( ) allowed.">
+                        <div class="invalid-feedback" id="errPhone"></div>
                     </div>
 
                     <div class="form-group mb-3">
@@ -292,14 +350,13 @@
 
                     <div class="form-group mb-3">
                         <label class="fw-bold mb-2">Tags</label>
-                        <div class="tags-container mb-2"
-                            style="max-height: 100px; overflow-y: auto; border: 1px solid #dee2e6; padding: 8px; border-radius: 6px;">
+                        <div class="tag-picker">
                             {% for tag, color in tags_inventory.items() %}
-                            <label class="d-inline-block me-2 mb-1" style="font-size: 0.85rem; cursor: pointer;">
+                            <label class="tag-option">
                                 <input type="checkbox" name="newCustTags" value="{{ tag }}">
-                                <span class="badge"
-                                    style="background-color: {{ color }}40; color: #333; border: 1px solid {{ color }};">{{
-                                    tag }}</span>
+                                <span class="tag-pill-ui">
+                                    {{ tag }}
+                                </span>
                             </label>
                             {% endfor %}
                         </div>
@@ -333,90 +390,119 @@
         function clearFilters() { window.location.href = "/customers"; }
     </script>
 
-    <script>
-        /* Create customer: client validation + server-side error handling */
-        document.getElementById('createCustBtn').addEventListener('click', createCustomer);
+    <!-- ONLY THE SCRIPT SECTION CHANGED — rest identical -->
 
-        async function createCustomer() {
-            const first = document.getElementById("custFirst").value.trim();
-            const last = document.getElementById("custLast").value.trim();
-            const email = document.getElementById("custEmail").value.trim();
-            const phone = document.getElementById("custPhone").value.trim();
-            const errorBox = document.getElementById("addCustError");
-            const btn = document.getElementById("createCustBtn");
+<script>
+document.getElementById('createCustBtn').addEventListener('click', createCustomer);
 
-            errorBox.textContent = "";
+async function createCustomer() {
 
-            const nameRegex = /^[A-Za-z\s'\-]+$/;
-            const emailRegex = /^[^@]+@[^@]+\.[^@]+$/;
-            const phoneRegex = /^[0-9\+\-\s\(\)]{6,20}$/;
+    const btn = document.getElementById("createCustBtn");
 
-            const errs = [];
-            if (!first) errs.push("First name is required.");
-            else if (!nameRegex.test(first)) errs.push("Invalid first name.");
+    const fields = {
+        first: document.getElementById("custFirst"),
+        last: document.getElementById("custLast"),
+        email: document.getElementById("custEmail"),
+        phone: document.getElementById("custPhone")
+    };
 
-            if (!last) errs.push("Last name is required.");
-            else if (!nameRegex.test(last)) errs.push("Invalid last name.");
+    const errors = {
+        first: document.getElementById("errFirst"),
+        last: document.getElementById("errLast"),
+        email: document.getElementById("errEmail"),
+        phone: document.getElementById("errPhone")
+    };
 
-            if (!email) errs.push("Email is required.");
-            else if (!emailRegex.test(email)) errs.push("Invalid email format.");
+    const errorBox = document.getElementById("addCustError");
 
-            if (phone && !phoneRegex.test(phone)) errs.push("Invalid phone format.");
+    // RESET
+    Object.values(fields).forEach(f => f.classList.remove("is-invalid"));
+    Object.values(errors).forEach(e => e.textContent = "");
+    errorBox.textContent = "";
 
-            if (errs.length) {
-                errorBox.textContent = errs.join(' ');
-                return;
-            }
+    const nameRegex = /^[A-Za-z\s'\-]+$/;
+    const emailRegex = /^[^@]+@[^@]+\.[^@]+$/;
+    const phoneRegex = /^[0-9\+\-\s\(\)]{6,20}$/;
 
-            const location = document.getElementById("custLocation").value.trim();
-            const checkedTags = Array.from(document.querySelectorAll("input[name='newCustTags']:checked")).map(cb => cb.value);
-            const newTag = document.getElementById("custNewTag").value.trim();
-            if (newTag) checkedTags.push(newTag);
+    let valid = true;
 
-            const payload = {
-                name: first + ' ' + last,
-                email,
-                phone,
-                location,
-                tags: checkedTags.join(',')
-            };
+    function invalidate(field, msg) {
+        field.classList.add("is-invalid");
+        errors[field.id.replace("cust","").toLowerCase()].textContent = msg;
+        valid = false;
+    }
 
-            btn.disabled = true;
-            const prevText = btn.textContent;
-            btn.textContent = 'Creating...';
+    const first = fields.first.value.trim();
+    const last = fields.last.value.trim();
+    const email = fields.email.value.trim();
+    const phone = fields.phone.value.trim();
 
-            try {
-                const res = await fetch("/api/customer/create", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
-                });
+    if (!first) invalidate(fields.first, "First name required");
+    else if (!nameRegex.test(first)) invalidate(fields.first, "Invalid characters");
 
-                const data = await res.json().catch(() => ({}));
+    if (!last) invalidate(fields.last, "Last name required");
+    else if (!nameRegex.test(last)) invalidate(fields.last, "Invalid characters");
 
-                if (!res.ok) {
-                    const messages = data.errors ? data.errors.join(' ') : (data.error || 'Failed to create customer.');
-                    errorBox.textContent = messages;
-                    btn.disabled = false;
-                    btn.textContent = prevText;
-                    return;
-                }
+    if (!email) invalidate(fields.email, "Email required");
+    else if (!emailRegex.test(email)) invalidate(fields.email, "Invalid email");
 
-                const modalEl = document.getElementById('addCustomerModal');
-                const bsModal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
-                bsModal.hide();
+    if (phone && !phoneRegex.test(phone)) invalidate(fields.phone, "Invalid phone");
 
-                // reload to show new customer
-                location.reload();
-            } catch (err) {
-                errorBox.textContent = "Network error. Try again.";
-                btn.disabled = false;
-                btn.textContent = prevText;
-            }
+    if (!valid) return;
+
+    // BUILD PAYLOAD
+    const location = document.getElementById("custLocation").value.trim();
+    const checkedTags = Array.from(document.querySelectorAll("input[name='newCustTags']:checked")).map(cb => cb.value);
+    const newTag = document.getElementById("custNewTag").value.trim();
+    if (newTag) checkedTags.push(newTag);
+
+    const payload = {
+        name: first + " " + last,
+        email,
+        phone,
+        location,
+        tags: checkedTags.join(',')
+    };
+
+    btn.disabled = true;
+    btn.textContent = "Creating...";
+
+    try {
+        const res = await fetch("/api/customer/create", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json().catch(()=>({}));
+
+        if (!res.ok) {
+            errorBox.textContent = data.error || "Failed to create customer";
+            btn.disabled = false;
+            btn.textContent = "Create";
+            return;
         }
-    </script>
+
+        bootstrap.Modal.getInstance(document.getElementById("addCustomerModal")).hide();
+
+        // FORCE FRESH LOAD
+        window.location.href = "/customers?refresh=" + Date.now();
+
+    } catch {
+        errorBox.textContent = "Network error";
+        btn.disabled = false;
+        btn.textContent = "Create";
+    }
+}
+</script>
+
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    setTimeout(() => {
+        document.querySelectorAll(".flash").forEach(el => el.remove());
+    }, 4000);
+    </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 

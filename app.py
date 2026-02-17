@@ -451,6 +451,32 @@ def inject_search_data():
         
     return dict(search_seed=search_seed)
 
+def get_tags_inventory():
+    tag_colors = {
+        'VIP': '#f59e0b',
+        'New': '#10b981',
+        'Returning': '#3b82f6',
+        'Hot Lead': '#ef4444',
+        'Cold Lead': '#6b7280',
+        'Premium': '#8b5cf6',
+        'Enterprise': '#ec4899'
+    }
+
+    # Start with defaults so inventory is never empty
+    tags_inventory = dict(tag_colors)
+
+    customers = Customer.query.all()
+
+    for c in customers:
+        if c.tags:
+            for tag in c.tags.split(','):
+                tag = tag.strip()
+                if tag:
+                    # Preserve default color if present, otherwise add with gray
+                    tags_inventory.setdefault(tag, tag_colors.get(tag, '#94a3b8'))
+
+    return tags_inventory
+
 # --- 2. ROUTES ---
 
 def calculate_session_score(session):
@@ -1037,7 +1063,7 @@ def customers():
     selected_tags = request.args.getlist('tags')
     last_contact_filter = request.args.get('last_contact', '')
     page = request.args.get('page', 1, type=int)
-    per_page = 12
+    per_page = 8
     
     # Build query
     query = Customer.query
@@ -1065,7 +1091,7 @@ def customers():
         'customer-list.html',
         customers=customers_list,
         pagination=pagination,
-        tags_inventory=tags_inventory,
+        tags_inventory=get_tags_inventory(),
         tag_colors=tag_colors,
         selected_tags=selected_tags,
         last_contact_filter=last_contact_filter,
@@ -1089,7 +1115,7 @@ def customer_profile(id):
     }
     
     users = User.query.all()
-    return render_template('customer_details.html', c=customer, tag_colors=tag_colors, users=users)
+    return render_template('customer_details.html', c=customer,tags_inventory=get_tags_inventory(), tag_colors=tag_colors, users=users)
 
 @app.route('/api/customer/<int:id>')
 def api_get_customer(id):
@@ -1107,40 +1133,13 @@ def api_get_customer(id):
         'updated_at': customer.updated_at
     })
 
-@app.route('/customer/<int:id>/edit', methods=['GET', 'POST'])
+from flask import flash
+
+@app.route('/customer/<int:id>/edit', methods=['GET','POST'])
 def edit_customer(id):
-    customer = Customer.query.get_or_404(id)
-    
-    if request.method == 'POST':
-        customer.name = request.form.get('name')
-        customer.email = request.form.get('email')
-        customer.phone = request.form.get('phone')
-        customer.location = request.form.get('location')
-        customer.notes = request.form.get('notes', '')
-        
-        # Handle tags
-        selected_tags = request.form.getlist('tags')
-        new_tag = request.form.get('new_tag', '').strip()
-        if new_tag:
-            selected_tags.append(new_tag)
-        customer.tags = ','.join(selected_tags) if selected_tags else ''
-        
-        from datetime import datetime
-        customer.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
-        customer.updated_by = session.get('user_name', 'Admin')
-        
-        db.session.commit()
-        
-        create_notification(
-            'customer',
-            'Customer Updated',
-            f'Customer "{customer.name}" was updated by {session.get("user_name", "Admin")}.',
-            icon='✏️'
-        )
-        
-        return redirect(url_for('customer_profile', id=id))
-    
-    # GET request - show edit form
+
+    c = Customer.query.get_or_404(id)
+
     tag_colors = {
         'VIP': '#f59e0b',
         'New': '#10b981',
@@ -1150,24 +1149,40 @@ def edit_customer(id):
         'Premium': '#8b5cf6',
         'Enterprise': '#ec4899'
     }
-    
-    # Get all unique tags for the tag picker
-    all_customers = Customer.query.all()
-    tags_inventory = {}
-    for c in all_customers:
-        if c.tags:
-            for tag in c.tags.split(','):
-                tag = tag.strip()
-                if tag and tag not in tags_inventory:
-                    tags_inventory[tag] = tag_colors.get(tag, '#94a3b8')
-    
-    return render_template('edit_customer.html', c=customer, tags_inventory=tags_inventory, tag_colors=tag_colors)
+
+    if request.method == 'POST':
+        c.name = request.form.get("name")
+        c.email = request.form.get("email")
+        c.phone = request.form.get("phone")
+        c.location = request.form.get("location")
+        c.notes = request.form.get("notes")
+
+        tags = request.form.getlist("tags")
+        new_tag = request.form.get("new_tag")
+
+        if new_tag:
+            tags.append(new_tag)
+
+        c.tags = ",".join(tags)
+
+        db.session.commit()
+        flash("Customer updated successfully!", "success")
+
+        return redirect(url_for('customer_profile', id=c.id))
+
+    return render_template(
+        'edit_customer.html',
+        c=c,
+        tags_inventory=get_tags_inventory(),
+        tag_colors=tag_colors
+    )
 
 @app.route('/customer/<int:id>/delete', methods=['POST'])
 def delete_customer(id):
     customer = Customer.query.get_or_404(id)
     db.session.delete(customer)
     db.session.commit()
+    flash("Customer deleted successfully!", "danger")
     return redirect(url_for('customers'))
 
 @app.route('/export_customers')
@@ -1224,6 +1239,36 @@ def api_create_customer():
     db.session.add(new_cust)
     db.session.commit()
     
+    # Create a corresponding ChatSession so the new customer appears in Chat History
+    try:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M')
+        chat = ChatSession(
+            visitor_name=new_cust.name,
+            visitor_email=new_cust.email,
+            status='bot',
+            linked_customer_id=new_cust.id,
+            created_at=now,
+            updated_at=now
+        )
+        db.session.add(chat)
+        db.session.flush()  # ensure chat.id available
+
+        # Add an initial system message to the chat history
+        sys_msg = ChatMessage(
+            session_id=chat.id,
+            sender_type='system',
+            sender_name='System',
+            text=f'Customer record created for {new_cust.name} in CRM.',
+            timestamp=datetime.now().strftime('%I:%M %p')
+        )
+        db.session.add(sys_msg)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        # don't block customer creation on chat seeding failure
+
+    flash("Customer created successfully!", "success")
+
     create_notification(
         'customer',
         'New Customer Added',
@@ -1327,6 +1372,7 @@ def api_visitor_profile(session_id):
             'visitor_email': chat_session.visitor_email,
             'visitor_phone': mock_phone,
             'linked_customer_id': chat_session.linked_customer_id,
+            'linked_inquiry_id': chat_session.linked_inquiry_id,
             'updated_at': chat_session.updated_at,
             'discovery_channel': 'Direct Visit'
         },
@@ -1658,9 +1704,6 @@ def api_chat_link_inquiry(session_id):
     db.session.commit()
     return jsonify({'ok': True})
 
-
-
-
 @app.route('/api/chat/message/<int:message_id>/edit', methods=['POST'])
 def api_chat_edit_message(message_id):
     msg = ChatMessage.query.get_or_404(message_id)
@@ -1745,6 +1788,7 @@ def delete_inquiry(id):
     inquiry = Inquiry.query.get_or_404(id)
     db.session.delete(inquiry)
     db.session.commit()
+    flash("Customer deleted successfully!", "danger")
     return jsonify({'ok': True})
 
 # API to fetch messages for the chat

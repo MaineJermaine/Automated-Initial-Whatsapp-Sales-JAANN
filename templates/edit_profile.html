@@ -8,17 +8,20 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
-<body id="page-profile" class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
+<body id="page-customers"
+
+    class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
+
     <aside class="sidebar">
         <h2>CRM Admin</h2>
-        <a href="/dashboard" class="nav-link nav-dashboard internal-link">Dashboard</a>
-        <a href="/customers" class="nav-link nav-customers internal-link">Customer List</a>
-        <a href="/templates-manager" class="nav-link nav-templates internal-link">Template Manager</a>
-        <a href="/history" class="nav-link nav-history internal-link">Chat History</a>
-        <a href="/repository" class="nav-link nav-repository internal-link">Inquiry Repository</a>
-        <a href="/scoring" class="nav-link nav-scoring internal-link">Lead Scoring</a>
+        <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
+        <a href="/customers" class="nav-link nav-customers active">Customer List</a>
+        <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
+        <a href="/history" class="nav-link nav-history">Chat History</a>
+        <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
+        <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
         {% if session.get('user_role') in ['super_admin', 'admin'] %}
-        <a href="/admin/create-account" class="nav-link nav-admin internal-link">
+        <a href="/admin/create-account" class="nav-link nav-admin">
             Manage Accounts
             {% if pending_promotion_count and pending_promotion_count > 0 %}
             <span class="badge bg-danger ms-2" style="font-size: 0.7em;">!</span>

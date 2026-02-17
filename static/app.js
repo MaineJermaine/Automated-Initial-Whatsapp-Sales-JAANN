@@ -398,6 +398,31 @@ async function saveCustomer() {
     }
 }
 
+function showToast(message, color = "green") {
+    const toast = document.getElementById("siteToast");
+    const msg = document.getElementById("toastMessage");
+
+    msg.innerText = message;
+
+    // color types
+    const colors = {
+        green: "#16a34a",
+        red: "#dc2626",
+        blue: "#2563eb"
+    };
+
+    toast.style.background = colors[color] || colors.green;
+
+    toast.classList.remove("hidden");
+
+    // auto hide after 4s
+    setTimeout(hideToast, 4000);
+}
+
+function hideToast() {
+    document.getElementById("siteToast").classList.add("hidden");
+}
+
 /* ==========================================================================
    4. SINGLE INITIALIZATION (runs ONCE on every page)
    ========================================================================== */
