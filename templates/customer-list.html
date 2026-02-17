@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <title>Customers</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
         .filter-tags-container {
@@ -13,6 +14,7 @@
             gap: 8px;
             align-items: center;
         }
+
         .filter-pill {
             display: inline-flex;
             align-items: center;
@@ -25,15 +27,18 @@
             cursor: pointer;
             border: 1px solid transparent;
         }
+
         .filter-pill input[type="checkbox"] {
             margin: 0;
             width: 16px;
             height: 16px;
             accent-color: #0d6efd;
         }
-        .filter-pill input[type="checkbox"]:checked + span {
+
+        .filter-pill input[type="checkbox"]:checked+span {
             font-weight: 600;
         }
+
         #filterModal .modal-body {
             max-height: 60vh;
             overflow: auto;
@@ -51,11 +56,22 @@
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers active">Customer List</a>
+        <a href="/my-team" class="nav-link nav-my-team d-flex justify-content-between align-items-center">
+            My Team
+            <div class="d-flex align-items-center gap-1">
+                {% if unread_team_messages %}
+                <span class="rounded-circle bg-warning" style="width: 10px; height: 10px; display: inline-block;"></span>
+                {% endif %}
+                {% if team_pending_requests_count and team_pending_requests_count > 0 %}
+                <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+                {% endif %}
+            </div>
+        </a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') in ['super_admin', 'admin'] %}
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">
             Manage Accounts
             {% if pending_promotion_count and pending_promotion_count > 0 %}
@@ -95,18 +111,18 @@
 
     <main class="main">
         <!-- FLASH MESSAGES -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="flash-container">
-                {% for category, message in messages %}
-                    <div class="flash flash-{{ category }}">
-                    <span>{{ message }}</span>
-                    <button onclick="this.parentElement.remove()">✕</button>
-                    </div>
-                {% endfor %}
-                </div>
-            {% endif %}
-            {% endwith %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-container">
+            {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">
+                <span>{{ message }}</span>
+                <button onclick="this.parentElement.remove()">✕</button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
         <div class="d-flex justify-content-between align-items-center mb-4">
 
             <div>
@@ -132,9 +148,8 @@
                     Export
                 </a>
 
-                <button class="btn btn-gray btn-sm d-flex align-items-center gap-1"
-                        data-bs-toggle="modal"
-                        data-bs-target="#filterModal">
+                <button class="btn btn-gray btn-sm d-flex align-items-center gap-1" data-bs-toggle="modal"
+                    data-bs-target="#filterModal">
                     Filters
                 </button>
 
@@ -159,10 +174,8 @@
                         <div class="filter-tags-container">
                             {% for tag, color in tags_inventory.items() %}
                             <label class="filter-pill">
-                                <input type="checkbox"
-                                    name="filterTags"
-                                    value="{{ tag }}"
-                                    {% if tag in selected_tags %}checked{% endif %}>
+                                <input type="checkbox" name="filterTags" value="{{ tag }}" {% if tag in selected_tags
+                                    %}checked{% endif %}>
                                 <span>{{ tag }}</span>
                             </label>
                             {% endfor %}
@@ -392,116 +405,116 @@
 
     <!-- ONLY THE SCRIPT SECTION CHANGED — rest identical -->
 
-<script>
-document.getElementById('createCustBtn').addEventListener('click', createCustomer);
+    <script>
+        document.getElementById('createCustBtn').addEventListener('click', createCustomer);
 
-async function createCustomer() {
+        async function createCustomer() {
 
-    const btn = document.getElementById("createCustBtn");
+            const btn = document.getElementById("createCustBtn");
 
-    const fields = {
-        first: document.getElementById("custFirst"),
-        last: document.getElementById("custLast"),
-        email: document.getElementById("custEmail"),
-        phone: document.getElementById("custPhone")
-    };
+            const fields = {
+                first: document.getElementById("custFirst"),
+                last: document.getElementById("custLast"),
+                email: document.getElementById("custEmail"),
+                phone: document.getElementById("custPhone")
+            };
 
-    const errors = {
-        first: document.getElementById("errFirst"),
-        last: document.getElementById("errLast"),
-        email: document.getElementById("errEmail"),
-        phone: document.getElementById("errPhone")
-    };
+            const errors = {
+                first: document.getElementById("errFirst"),
+                last: document.getElementById("errLast"),
+                email: document.getElementById("errEmail"),
+                phone: document.getElementById("errPhone")
+            };
 
-    const errorBox = document.getElementById("addCustError");
+            const errorBox = document.getElementById("addCustError");
 
-    // RESET
-    Object.values(fields).forEach(f => f.classList.remove("is-invalid"));
-    Object.values(errors).forEach(e => e.textContent = "");
-    errorBox.textContent = "";
+            // RESET
+            Object.values(fields).forEach(f => f.classList.remove("is-invalid"));
+            Object.values(errors).forEach(e => e.textContent = "");
+            errorBox.textContent = "";
 
-    const nameRegex = /^[A-Za-z\s'\-]+$/;
-    const emailRegex = /^[^@]+@[^@]+\.[^@]+$/;
-    const phoneRegex = /^[0-9\+\-\s\(\)]{6,20}$/;
+            const nameRegex = /^[A-Za-z\s'\-]+$/;
+            const emailRegex = /^[^@]+@[^@]+\.[^@]+$/;
+            const phoneRegex = /^[0-9\+\-\s\(\)]{6,20}$/;
 
-    let valid = true;
+            let valid = true;
 
-    function invalidate(field, msg) {
-        field.classList.add("is-invalid");
-        errors[field.id.replace("cust","").toLowerCase()].textContent = msg;
-        valid = false;
-    }
+            function invalidate(field, msg) {
+                field.classList.add("is-invalid");
+                errors[field.id.replace("cust", "").toLowerCase()].textContent = msg;
+                valid = false;
+            }
 
-    const first = fields.first.value.trim();
-    const last = fields.last.value.trim();
-    const email = fields.email.value.trim();
-    const phone = fields.phone.value.trim();
+            const first = fields.first.value.trim();
+            const last = fields.last.value.trim();
+            const email = fields.email.value.trim();
+            const phone = fields.phone.value.trim();
 
-    if (!first) invalidate(fields.first, "First name required");
-    else if (!nameRegex.test(first)) invalidate(fields.first, "Invalid characters");
+            if (!first) invalidate(fields.first, "First name required");
+            else if (!nameRegex.test(first)) invalidate(fields.first, "Invalid characters");
 
-    if (!last) invalidate(fields.last, "Last name required");
-    else if (!nameRegex.test(last)) invalidate(fields.last, "Invalid characters");
+            if (!last) invalidate(fields.last, "Last name required");
+            else if (!nameRegex.test(last)) invalidate(fields.last, "Invalid characters");
 
-    if (!email) invalidate(fields.email, "Email required");
-    else if (!emailRegex.test(email)) invalidate(fields.email, "Invalid email");
+            if (!email) invalidate(fields.email, "Email required");
+            else if (!emailRegex.test(email)) invalidate(fields.email, "Invalid email");
 
-    if (phone && !phoneRegex.test(phone)) invalidate(fields.phone, "Invalid phone");
+            if (phone && !phoneRegex.test(phone)) invalidate(fields.phone, "Invalid phone");
 
-    if (!valid) return;
+            if (!valid) return;
 
-    // BUILD PAYLOAD
-    const location = document.getElementById("custLocation").value.trim();
-    const checkedTags = Array.from(document.querySelectorAll("input[name='newCustTags']:checked")).map(cb => cb.value);
-    const newTag = document.getElementById("custNewTag").value.trim();
-    if (newTag) checkedTags.push(newTag);
+            // BUILD PAYLOAD
+            const location = document.getElementById("custLocation").value.trim();
+            const checkedTags = Array.from(document.querySelectorAll("input[name='newCustTags']:checked")).map(cb => cb.value);
+            const newTag = document.getElementById("custNewTag").value.trim();
+            if (newTag) checkedTags.push(newTag);
 
-    const payload = {
-        name: first + " " + last,
-        email,
-        phone,
-        location,
-        tags: checkedTags.join(',')
-    };
+            const payload = {
+                name: first + " " + last,
+                email,
+                phone,
+                location,
+                tags: checkedTags.join(',')
+            };
 
-    btn.disabled = true;
-    btn.textContent = "Creating...";
+            btn.disabled = true;
+            btn.textContent = "Creating...";
 
-    try {
-        const res = await fetch("/api/customer/create", {
-            method: "POST",
-            headers: {"Content-Type":"application/json"},
-            body: JSON.stringify(payload)
-        });
+            try {
+                const res = await fetch("/api/customer/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
 
-        const data = await res.json().catch(()=>({}));
+                const data = await res.json().catch(() => ({}));
 
-        if (!res.ok) {
-            errorBox.textContent = data.error || "Failed to create customer";
-            btn.disabled = false;
-            btn.textContent = "Create";
-            return;
+                if (!res.ok) {
+                    errorBox.textContent = data.error || "Failed to create customer";
+                    btn.disabled = false;
+                    btn.textContent = "Create";
+                    return;
+                }
+
+                bootstrap.Modal.getInstance(document.getElementById("addCustomerModal")).hide();
+
+                // FORCE FRESH LOAD
+                window.location.href = "/customers?refresh=" + Date.now();
+
+            } catch {
+                errorBox.textContent = "Network error";
+                btn.disabled = false;
+                btn.textContent = "Create";
+            }
         }
-
-        bootstrap.Modal.getInstance(document.getElementById("addCustomerModal")).hide();
-
-        // FORCE FRESH LOAD
-        window.location.href = "/customers?refresh=" + Date.now();
-
-    } catch {
-        errorBox.textContent = "Network error";
-        btn.disabled = false;
-        btn.textContent = "Create";
-    }
-}
-</script>
+    </script>
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-    setTimeout(() => {
-        document.querySelectorAll(".flash").forEach(el => el.remove());
-    }, 4000);
+        setTimeout(() => {
+            document.querySelectorAll(".flash").forEach(el => el.remove());
+        }, 4000);
     </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

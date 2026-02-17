@@ -9,18 +9,20 @@
 </head>
 
 <body id="page-customers"
-
     class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
 
     <aside class="sidebar">
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
-        <a href="/customers" class="nav-link nav-customers active">Customer List</a>
+        <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        {% if session.get('team_id') %}
+        <a href="/my-team" class="nav-link nav-my-team">My Team</a>
+        {% endif %}
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') in ['super_admin', 'admin'] %}
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">
             Manage Accounts
             {% if pending_promotion_count and pending_promotion_count > 0 %}
@@ -28,6 +30,7 @@
             {% endif %}
         </a>
         {% endif %}
+
 
         <!-- Sidebar Footer -->
         <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
@@ -116,6 +119,16 @@
                                     <label for="bio" class="form-label">Bio</label>
                                     <textarea class="form-control" id="bio" name="bio"
                                         rows="3">{{ user.bio }}</textarea>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Individual Score</label>
+                                    <div class="alert alert-info mb-0 d-flex align-items-center justify-content-between">
+                                        <div>
+                                            <strong class="fs-4">{{ agent_score }}</strong>
+                                            <p class="mb-0 small text-muted mt-1">Based on your assigned inquiries and active chat sessions</p>
+                                        </div>
+                                        <i class="bi bi-trophy-fill fs-1 text-warning"></i>
+                                    </div>
                                 </div>
                             </div>
 

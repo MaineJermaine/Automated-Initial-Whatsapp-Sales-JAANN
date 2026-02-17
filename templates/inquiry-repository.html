@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inquiry Repository - Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <script>
@@ -19,11 +20,22 @@
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/my-team" class="nav-link nav-my-team d-flex justify-content-between align-items-center">
+            My Team
+            <div class="d-flex align-items-center gap-1">
+                {% if unread_team_messages %}
+                <span class="rounded-circle bg-warning" style="width: 10px; height: 10px; display: inline-block;"></span>
+                {% endif %}
+                {% if team_pending_requests_count and team_pending_requests_count > 0 %}
+                <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+                {% endif %}
+            </div>
+        </a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository active">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') in ['super_admin', 'admin'] %}
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">
             Manage Accounts
             {% if pending_promotion_count and pending_promotion_count > 0 %}
@@ -112,6 +124,12 @@
     </main>
 
     <script>
+        // Global User Context for Standardized Modals
+        window.currUserId = {{ session.get('user_id', 0) }};
+        window.currUserRole = "{{ session.get('user_role', 'agent') }}";
+        window.currUsername = "{{ session.get('user_username', '') }}";
+
+        let debounceTimer;
         async function refreshTable() {
             const search = document.getElementById('search-input').value;
             const checkboxes = document.querySelectorAll('.filter-cb:checked');
@@ -194,75 +212,10 @@
             }
         }
 
-        async function showAgentProfile(userId) {
-            try {
-                const res = await fetch(`/api/admin/user/${userId}`);
-                if (!res.ok) throw new Error('Failed to fetch user');
-                const user = await res.json();
-
-                document.getElementById('profName').textContent = user.name;
-                document.getElementById('profUser').textContent = '@' + user.username;
-                document.getElementById('profRole').textContent = user.role.replace('_', ' ').toUpperCase();
-                document.getElementById('profBio').textContent = user.bio || 'No bio available.';
-
-                let picUrl = user.profile_picture;
-                if (picUrl) {
-                    if (!picUrl.startsWith('http')) picUrl = `/static/uploads/${picUrl}`;
-                    document.getElementById('profPic').src = picUrl;
-                    document.getElementById('profPic').style.display = 'block';
-                    document.getElementById('profInitials').style.display = 'none';
-                } else {
-                    document.getElementById('profInitials').textContent = user.name[0].toUpperCase();
-                    document.getElementById('profInitials').style.display = 'flex';
-                    document.getElementById('profPic').style.display = 'none';
-                }
-
-                const modal = new bootstrap.Modal(document.getElementById('agentProfileModal'));
-                modal.show();
-            } catch (err) {
-                console.error(err);
-                alert('Could not load agent profile.');
-            }
-        }
+        // showTeamDetails function is now standardized and available from app.js
     </script>
 
-    <!-- Agent Profile Modal -->
-    <div class="modal fade" id="agentProfileModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow-lg" style="border-radius: 20px; overflow: hidden;">
-                <div class="modal-header border-0 pb-0 pt-4 px-4">
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-4 text-center">
-                    <div class="mb-4 d-flex justify-content-center">
-                        <div
-                            style="width: 100px; height: 100px; border-radius: 30px; overflow: hidden; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
-                            <img id="profPic" src=""
-                                style="width: 100%; height: 100%; object-fit: cover; display: none;">
-                            <div id="profInitials"
-                                style="width: 100%; height: 100%; background: var(--blue); color: white; display: none; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 700;">
-                            </div>
-                        </div>
-                    </div>
-                    <h3 id="profName" class="fw-bold mb-1"></h3>
-                    <p id="profUser" class="text-primary fw-600 mb-3"></p>
-                    <div class="mb-4">
-                        <span id="profRole" class="badge rounded-pill bg-light text-dark px-3 py-2 border shadow-sm"
-                            style="font-size: 0.75rem; letter-spacing: 0.05em;"></span>
-                    </div>
-                    <div class="p-3 bg-light rounded-4 text-start mb-2" style="border: 1px dashed #ced4da;">
-                        <label class="small text-muted fw-bold mb-1 d-block text-uppercase"
-                            style="font-size: 0.65rem;">Biography</label>
-                        <p id="profBio" class="small mb-0 text-secondary" style="line-height: 1.6;"></p>
-                    </div>
-                </div>
-                <div class="modal-footer border-0 p-4">
-                    <button type="button" class="btn btn-blue w-100 py-2 fw-bold" data-bs-dismiss="modal"
-                        style="border-radius: 12px;">Close Profile</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- Team Details Modal is now standardized and injected by app.js -->
 
     <!-- Confirm Overlay -->
     <div id="confirmOverlay" style="display:none;"></div>

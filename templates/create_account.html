@@ -35,6 +35,20 @@
             padding-bottom: 10px;
             border-bottom: 1px solid #edf2f7;
         }
+
+        .team-bubble:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05) !important;
+            border-color: #6366f1 !important;
+        }
+
+        .text-truncate-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
     </style>
 </head>
 
@@ -44,11 +58,22 @@
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/my-team" class="nav-link nav-my-team d-flex justify-content-between align-items-center">
+            My Team
+            <div class="d-flex align-items-center gap-1">
+                {% if unread_team_messages %}
+                <span class="rounded-circle bg-warning" style="width: 10px; height: 10px; display: inline-block;"></span>
+                {% endif %}
+                {% if team_pending_requests_count and team_pending_requests_count > 0 %}
+                <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+                {% endif %}
+            </div>
+        </a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') in ['super_admin', 'admin'] %}
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin active">
             Manage Accounts
             {% if pending_promotion_count and pending_promotion_count > 0 %}
@@ -116,13 +141,13 @@
                                 <span class="badge bg-light text-secondary border">
                                     Approved: {{ approvals|length }} / {{ total_super_admins }}
                                 </span>
-                                {% if session.get('user_id') in approvals %}
+                                {% if session.get('user_id')|string in approvals %}
                                 <span class="badge bg-success-subtle text-success px-3 py-2">Approved</span>
                                 {% else %}
                                 <button class="btn btn-sm btn-success"
-                                    onclick="approvePromotion({{ req.id }}, {{ approvals|length }}, {{ total_super_admins }})">Approve</button>
+                                    onclick="approvePromotion('{{ req.id }}', '{{ approvals|length }}', '{{ total_super_admins }}')">Approve</button>
                                 <button class="btn btn-sm btn-danger"
-                                    onclick="rejectPromotion({{ req.id }})">Reject</button>
+                                    onclick="rejectPromotion('{{ req.id }}')">Reject</button>
                                 {% endif %}
                             </div>
                         </div>
@@ -131,7 +156,30 @@
                 </div>
             </div>
             {% endif %}
-            {% if session.get('user_role') == 'super_admin' %}
+            <!-- My Pending Promotion -->
+            {% if my_promotion %}
+            <div class="alert alert-warning border-0 shadow-sm mb-4"
+                style="border-radius: 16px; background-color: #fff9db; border-left: 5px solid #fcc419 !important;">
+                <div class="d-flex align-items-center">
+                    <div class="me-3 fs-3">⏳</div>
+                    <div class="flex-grow-1">
+                        <h5 class="fw-bold mb-1" style="color: #856404;">Your Promotion to {{ my_promotion.role }} is
+                            Pending</h5>
+                        <p class="mb-2 small text-muted">Approval progress: <strong>{{ my_promotion.approvals
+                                }}</strong> out of <strong>{{ my_promotion.total_needed }}</strong> Super Admins have
+                            approved.</p>
+                        <div class="progress" style="height: 10px; border-radius: 10px; background-color: #f1f1f1;">
+                            {% set pct = (my_promotion.approvals / my_promotion.total_needed * 100) if
+                            my_promotion.total_needed > 0 else 0 %}
+                            <div class="progress-bar bg-warning progress-bar-striped progress-bar-animated"
+                                role="progressbar" style="width: {{ pct }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if session.get('user_role') in ['ultra_admin', 'super_admin'] %}
             <div class="account-form-card mb-5">
                 <h3 class="form-section-title">Create New Team Account</h3>
 
@@ -176,7 +224,6 @@
                                     <select name="role" class="form-select">
                                         <option value="agent">Agent (Standard)</option>
                                         <option value="admin">Admin (Manage & Announcements)</option>
-                                        <option value="super_admin">Super Admin (Full Access)</option>
                                     </select>
                                 </div>
                                 <div class="col-12">
@@ -197,13 +244,54 @@
             <!-- Existing Accounts List -->
             <div class="card shadow-sm border-0" style="border-radius: 16px;">
                 <div class="card-body p-4">
-                    <h3 class="form-section-title">Existing Accounts</h3>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
+                                <input type="text" id="userListSearch" class="form-control border-start-0"
+                                    placeholder="Search by name or handle...">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <select id="filterRole" class="form-select">
+                                <option value="all">All Roles</option>
+                                <option value="ultra_admin">Ultra Admin</option>
+                                <option value="super_admin">Super Admin</option>
+                                <option value="admin">Admin</option>
+                                <option value="agent">Agent</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <select id="filterTeam" class="form-select">
+                                <option value="all">All Teams</option>
+                                {% for team in teams %}
+                                <option value="{{ team.id }}">{{ team.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <select id="filterStatus" class="form-select">
+                                <option value="all">All Status</option>
+                                <option value="Active">Active Only</option>
+                                <option value="Inactive">Inactive Only</option>
+                            </select>
+                        </div>
+                        {% if session.get('user_role') in ['ultra_admin', 'super_admin'] %}
+                        <div class="col-md-2 text-end">
+                            <button class="btn btn-outline-primary" onclick="scrollToTeams()">
+                                <i class="bi bi-people-fill me-1"></i> Manage Teams
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle">
+                        <table class="table table-hover align-middle" id="accountsTable">
                             <thead class="table-light">
                                 <tr>
                                     <th class="ps-3">User</th>
                                     <th>Role</th>
+                                    <th>Team / Org</th>
                                     <th>Status</th>
                                     <th class="text-end pe-3">Actions</th>
                                 </tr>
@@ -235,37 +323,62 @@
                                         </div>
                                     </td>
                                     <td>
-                                        <span
-                                            class="badge {{ 'bg-primary-subtle text-primary' if user.role == 'super_admin' else ('bg-info-subtle text-info' if user.role == 'admin' else 'bg-secondary-subtle text-secondary') }} px-3 py-2">
-                                            {{ 'Super Admin' if user.role == 'super_admin' else ('Admin' if user.role ==
-                                            'admin' else 'Agent') }}
-                                        </span>
+                                        {% if user.role == 'ultra_admin' %}
+                                        <span class="badge role-ultra-admin">⚡ Ultra Admin</span>
+                                        {% elif user.role == 'super_admin' %}
+                                        <span class="badge bg-primary-subtle text-primary">Super Admin</span>
+                                        {% elif user.role == 'admin' %}
+                                        <span class="badge bg-info-subtle text-info">Admin</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary-subtle text-secondary">Agent</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if user.team_obj %}
+                                        <div class="d-flex align-items-center" style="cursor: pointer;"
+                                            onclick="showTeamDetails('{{ user.team_id }}')">
+                                            <span class="badge bg-light text-dark border me-2">{{ user.team_obj.team_tag
+                                                or 'TEAM' }}</span>
+                                            <span class="small fw-bold">{{ user.team_obj.name }}</span>
+                                        </div>
+                                        <div class="small text-muted" style="font-size: 0.75rem; margin-left: 2px;">
+                                            {{ user.team_role | title if user.team_role else 'Member' }}
+                                        </div>
+                                        {% else %}
+                                        <span class="text-muted small">No Team</span>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         {% set status = user.status_display %}
                                         <span
-                                            class="badge {{ 'bg-success-subtle text-success' if status == 'Active' else 'bg-secondary-subtle text-secondary' }} px-2 py-1"
-                                            style="font-size: 0.7rem;">{{ status | upper }}</span>
+                                            class="badge {% if 'Active' in status %}bg-success-subtle text-success{% else %}bg-secondary-subtle text-secondary{% endif %} px-2 py-1"
+                                            style="font-size: 0.7rem;">
+                                            {{ status | upper }}
+                                        </span>
                                     </td>
-                                    <td class="text-end pe-3">
+                                    <td class="text-end pe-3" data-search-team="{{ user.team_id or 'none' }}"
+                                        data-search-role="{{ user.role }}"
+                                        data-search-status="{{ 'Active' if 'Active' in status else 'Inactive' }}">
                                         <div class="btn-group">
                                             <button class="btn btn-sm btn-outline-primary"
-                                                onclick="viewUser({{ user.id }})" title="View Profile">
+                                                onclick="viewUser('{{ user.id }}')" title="View Profile">
                                                 👁️
                                             </button>
 
-                                            {% set can_edit = (session.get('user_role') == 'super_admin') or
+                                            {% set can_edit = (session.get('user_role') in ['ultra_admin',
+                                            'super_admin']) or
                                             (session.get('user_role') == 'admin' and user.role == 'agent') %}
                                             <button class="btn btn-sm btn-outline-warning"
-                                                onclick="editUser({{ user.id }})" title="Edit Account" {% if not
+                                                onclick="editUser('{{ user.id }}')" title="Edit Account" {% if not
                                                 can_edit %}disabled style="opacity:0.5; cursor:not-allowed;" {% endif
                                                 %}>
                                                 ✏️
                                             </button>
 
-                                            {% set can_delete = (session.get('user_role') == 'super_admin' and user.role
-                                            != 'super_admin') or (session.get('user_role') == 'admin' and user.role ==
-                                            'agent') %}
+                                            {% set can_delete = (session.get('user_role') == 'ultra_admin') or
+                                            (session.get('user_role') == 'super_admin' and user.role not in
+                                            ['super_admin', 'ultra_admin']) or
+                                            (session.get('user_role') == 'admin' and user.role == 'agent') %}
                                             {% if session.get('user_id') == user.id %}
                                             {% set can_delete = false %}
                                             {% endif %}
@@ -274,49 +387,112 @@
                                             {% endif %}
 
                                             <button class="btn btn-sm btn-outline-danger"
-                                                onclick="confirmDeleteUser({{ user.id }}, '{{ user.username }}')"
+                                                onclick="confirmDeleteUser('{{ user.id }}', '{{ user.username }}')"
                                                 title="Delete Account" {% if not can_delete %}disabled
                                                 style="opacity:0.5; cursor:not-allowed;" {% endif %}>
                                                 🗑️
                                             </button>
+
+                                            {% if user.team_id %}
+                                            <button class="btn btn-sm btn-outline-info"
+                                                onclick="showTeamDetails('{{ user.team_id }}')" title="View Team Profil">
+                                                👥
+                                            </button>
+                                            {% else %}
+                                            <button class="btn btn-sm btn-outline-secondary" disabled title="No Team">
+                                                👥
+                                            </button>
+                                            {% endif %}
+
+                                            {% if session.get('user_role') in ['ultra_admin', 'super_admin'] or
+                                            (session.get('user_role') == 'admin' and user.role == 'agent') %}
+                                            <button class="btn btn-sm btn-outline-dark"
+                                                onclick="initiateMoveUser('{{ user.id }}')" title="Reassign Team">
+                                                🔄
+                                            </button>
+                                            {% endif %}
                                         </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
+                                <tr id="noResultsRow" style="display: none;">
+                                    <td colspan="5" class="text-center py-5 text-muted">
+                                        <i class="bi bi-search mb-2" style="font-size: 2rem;"></i>
+                                        <p>No accounts found matching your filters.</p>
+                                        <button class="btn btn-sm btn-link" onclick="clearFilters()">Clear all filters</button>
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         </div>
-    </main>
 
-    <!-- Modal View User -->
-    <div class="modal fade" id="viewUserModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
-                <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold">User Profile</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body text-center py-4">
-                    <div class="avatar-circle mx-auto mb-3"
-                        style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; border: 3px solid #eee;">
-                        <img id="viewUserPic" src="" alt="User" style="width: 100%; height: 100%; object-fit: cover;">
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin'] %}
+        <!-- Teams Management Section (Visible by default) -->
+        <div class="content-body" style="padding: 0 30px 30px 30px;">
+            <div id="teamsSection" class="card shadow-sm border-0 mb-5" style="border-radius: 16px;">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h3 class="form-section-title mb-0">Teams Management</h3>
+                        <div>
+                            {% if session.get('user_role') in ['ultra_admin', 'super_admin'] %}
+                            <button class="btn btn-blue btn-sm" data-bs-toggle="modal"
+                                data-bs-target="#createTeamModal">
+                                + Create Team
+                            </button>
+                            {% endif %}
+                        </div>
                     </div>
-                    <h4 id="viewUserName" class="fw-bold mb-1"></h4>
-                    <p id="viewUserHandle" class="text-primary mb-3"></p>
-                    <div class="mb-3">
-                        <span id="viewUserRole" class="badge bg-primary-subtle text-primary px-3 py-2"></span>
-                    </div>
-                    <div class="text-start px-4">
-                        <label class="fw-bold small text-muted">Biography</label>
-                        <p id="viewUserBio" class="bg-light p-3 rounded" style="font-size: 0.9rem;"></p>
+
+                    <div class="row g-4">
+                        <!-- My Team Info -->
+                        <div class="col-md-4 border-end">
+                            <h5 class="small fw-bold text-muted text-uppercase mb-3">My Current Status</h5>
+                            {% if my_team_id %}
+                            <div class="d-flex align-items-center p-3 border rounded bg-light mb-3">
+                                <div class="team-avatar me-3">
+                                    <img src="https://ui-avatars.com/api/?name=Team&background=6366f1&color=fff"
+                                        class="rounded" style="width: 48px; height: 48px;">
+                                </div>
+                                <div class="flex-grow-1">
+                                    <div class="fw-bold" id="myTeamName">Loading...</div>
+                                    <div class="small text-primary badge bg-primary-subtle">{{ my_team_role | title }}
+                                    </div>
+                                </div>
+                            </div>
+                            {% if team_request_count > 0 %}
+                            <button class="btn btn-warning btn-sm w-100 mb-2" data-bs-toggle="modal"
+                                data-bs-target="#teamRequestsModal">
+                                🔔 Pending Requests ({{ team_request_count }})
+                            </button>
+                            {% endif %}
+                            <button class="btn btn-outline-danger btn-sm w-100" onclick="leaveTeam()">
+                                Leave Current Team
+                            </button>
+                            {% else %}
+                            <div class="alert alert-info py-2 small">
+                                You are not currently part of any team.
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Available Teams -->
+                        <div class="col-md-8">
+                            <h5 class="small fw-bold text-muted text-uppercase mb-3">Available Teams</h5>
+                            <div class="row row-cols-1 row-cols-md-2 g-3" id="teamsListContainer">
+                                <div class="col text-center py-4">
+                                    <div class="spinner-border spinner-border-sm text-primary"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+        {% endif %}
+    </main>
 
     <!-- Modal Edit User -->
     <div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
@@ -339,15 +515,16 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-bold small">Role</label>
-                            <select name="role" id="editUserRole" class="form-select" {% if session.get('user_role')
-                                !='super_admin' %}disabled{% endif %}>
+                            <select name="role" id="editUserRole" class="form-select" {% if session.get('user_role') not
+                                in ['ultra_admin', 'super_admin' ] %}disabled{% endif %}>
                                 <option value="agent">Agent (Standard)</option>
                                 <option value="admin">Admin (Manage & Announcements)</option>
                                 <option value="super_admin">Super Admin (Full Access)</option>
                             </select>
-                            {% if session.get('user_role') != 'super_admin' %}
+                            {% if session.get('user_role') not in ['ultra_admin', 'super_admin'] %}
                             <input type="hidden" name="role" id="hiddenEditUserRole">
-                            <small class="text-muted d-block mt-1">Only Super Admins can change roles.</small>
+                            <small class="text-muted d-block mt-1">Only Super Admins and the Ultra Admin can change
+                                roles.</small>
                             {% endif %}
                         </div>
                         <div class="mb-3">
@@ -389,7 +566,7 @@
     </div>
 
     <!-- Generic Confirmation Modal -->
-    <div class="modal fade" id="confirmationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="confirmationModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
         <div class="modal-dialog modal-dialog-centered modal-sm">
             <div class="modal-content border-0 shadow" style="border-radius: 16px;">
                 <div class="modal-body text-center py-4">
@@ -405,9 +582,208 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <!-- Create Team Modal -->
+    <div class="modal fade" id="createTeamModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">Create New Team</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="createTeamForm">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Team Name</label>
+                            <input type="text" name="name" class="form-control" required
+                                placeholder="e.g. JAANN Support">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Team Tag</label>
+                            <input type="text" name="team_tag" class="form-control" placeholder="e.g. SUP"
+                                maxlength="5">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Role / Purpose</label>
+                            <input type="text" name="role" class="form-control" placeholder="e.g. Customer Support">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Team Description</label>
+                            <textarea name="description" class="form-control" rows="2"
+                                placeholder="Describe the team's mission..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Team Leader</label>
+                            <select name="leader_id" class="form-select" {% if me and me.team_id %}required{% endif %}>
+                                <option value="">{% if me and me.team_id %}-- Select a Leader (Required) --{% else %}-- Myself (Defualt) --{% endif %}</option>
+                                {% for user in users %}
+                                    {% if not user.team_id %}
+                                    <option value="{{ user.id }}">{{ user.name }} (@{{ user.username }})</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                            {% if me and me.team_id %}
+                            <small class="text-danger" style="font-size: 0.7rem;">Since you are already in a team, you must assign another user as the leader.</small>
+                            {% else %}
+                            <small class="text-muted" style="font-size: 0.7rem;">Leave blank to assign yourself as leader.</small>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Team Icon (Optional)</label>
+                            <input type="file" name="profile_picture" class="form-control" accept="image/*">
+                            <small class="text-muted" style="font-size: 0.7rem;">JPG or PNG recommended.</small>
+                        </div>
+                        <div class="text-end pt-2">
+                            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-blue px-4">Create Team</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal View User -->
+    <div class="modal fade" id="viewUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">User Profile</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <div class="avatar-circle mx-auto mb-3"
+                        style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; border: 3px solid #eee;">
+                        <img id="viewUserPic" src="" alt="User" style="width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <h4 id="viewUserName" class="fw-bold mb-1"></h4>
+                    <p id="viewUserHandle" class="text-primary mb-3"></p>
+                    <div class="mb-3">
+                        <span id="viewUserRole" class="badge bg-primary-subtle text-primary px-3 py-2"></span>
+                    </div>
+
+                    <div class="mb-3 px-4">
+                        <div class="d-flex align-items-center justify-content-between p-3 border rounded-4 bg-white shadow-sm">
+                            <div class="text-start">
+                                <div class="h4 fw-bold text-primary mb-0" id="viewUserScore">0</div>
+                                <div class="small text-muted">Individual Score</div>
+                            </div>
+                            <i class="bi bi-trophy-fill fs-2 text-warning opacity-75"></i>
+                        </div>
+                    </div>
+
+                    <div class="text-start px-4">
+                        <label class="fw-bold small text-muted">Biography</label>
+                        <p id="viewUserBio" class="bg-light p-3 rounded" style="font-size: 0.9rem;"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Move User Modal -->
+    <div class="modal fade" id="moveUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">Move User to Team</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <input type="hidden" id="moveUserId">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Select Destination Team</label>
+                        <select id="moveTeamSelect" class="form-select">
+                            <option value="none">No Team (Unassign)</option>
+                            {% for team in teams %}
+                            <option value="{{ team.id }}">{{ team.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <p class="small text-muted">The user will be notified of their new team assignment.</p>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-blue px-4" onclick="confirmMoveUser()">Move User</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Team Requests Modal -->
+    <div class="modal fade" id="teamRequestsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title">Team Requests</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="teamRequestsList">
+                        <!-- Loaded via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Team Details Modal is now standardized and injected by app.js -->
+
+
     <script>
+        // --- Team Request Loading for Leaders ---
+        const teamRequestsModalEl = document.getElementById('teamRequestsModal');
+        if (teamRequestsModalEl) {
+            teamRequestsModalEl.addEventListener('show.bs.modal', loadTeamRequests);
+        }
+
+        async function loadTeamRequests() {
+            const container = document.getElementById('teamRequestsList');
+            container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>';
+
+            // Note: We need a new endpoint or reusable logic to fetch pending requests for current user's team.
+            // For now, let's assume we can fetch them from a dedicated API.
+            const res = await fetch('/api/teams/my-requests');
+            const data = await res.json();
+
+            if (!data.requests || data.requests.length === 0) {
+                container.innerHTML = '<div class="alert alert-light text-center small">No pending requests.</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            data.requests.forEach(req => {
+                const item = document.createElement('div');
+                item.className = 'd-flex align-items-center justify-content-between p-3 border rounded mb-2';
+                item.innerHTML = `
+                    <div>
+                        <div class="fw-bold small">${req.user_name}</div>
+                        <div class="text-muted" style="font-size: 0.7rem;">Action: ${req.type}</div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-success" onclick="handleTeamRequest(${req.id}, 'approved')">Approve</button>
+                        <button class="btn btn-sm btn-danger" onclick="handleTeamRequest(${req.id}, 'rejected')">Reject</button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        async function handleTeamRequest(requestId, status) {
+            const res = await fetch('/api/teams/handle-request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ request_id: requestId, status: status })
+            });
+            const data = await res.json();
+            if (data.success) {
+                loadTeamRequests();
+                // Optionally reload page to update table
+                setTimeout(() => location.reload(), 500);
+            } else {
+                alert(data.error);
+            }
+        }
         // Profile Pic Preview for Creation
         document.getElementById('profilePicInput').addEventListener('change', function (e) {
             const file = e.target.files[0];
@@ -420,6 +796,340 @@
             }
         });
 
+        // --- Search & Filter Logic ---
+        function attachFilterListeners() {
+            const searchInput = document.getElementById('userListSearch');
+            const roleSelect = document.getElementById('filterRole');
+            const teamSelect = document.getElementById('filterTeam');
+            const statusSelect = document.getElementById('filterStatus');
+
+            if (searchInput) searchInput.addEventListener('input', applyFilters);
+            if (roleSelect) roleSelect.addEventListener('change', applyFilters);
+            if (teamSelect) teamSelect.addEventListener('change', applyFilters);
+            if (statusSelect) statusSelect.addEventListener('change', applyFilters);
+        }
+        attachFilterListeners();
+
+        // Global User Context for Standardized Modals
+        window.currUserId = {{ session.get('user_id', 0) }};
+        window.currUserRole = "{{ session.get('user_role', 'agent') }}";
+        window.currUsername = "{{ session.get('user_username', '') }}";
+
+        const filterPrefix = 'userConfig_';
+
+        function applyFilters() {
+            try {
+                const searchInput = document.getElementById('userListSearch');
+                const roleSelect = document.getElementById('filterRole');
+                const teamSelect = document.getElementById('filterTeam');
+                const statusSelect = document.getElementById('filterStatus');
+
+                if (!searchInput || !roleSelect || !teamSelect || !statusSelect) {
+                    console.warn("Filter elements missing skip applyFilters");
+                    return;
+                }
+
+                const query = searchInput.value.toLowerCase();
+                const role = roleSelect.value;
+                const team = teamSelect.value;
+                const status = statusSelect.value;
+
+                console.log(`Applying filters: q=${query}, r=${role}, t=${team}, s=${status}`);
+
+                // Save to localStorage
+                localStorage.setItem(filterPrefix + 'query', query);
+                localStorage.setItem(filterPrefix + 'role', role);
+                localStorage.setItem(filterPrefix + 'team', team);
+                localStorage.setItem(filterPrefix + 'status', status);
+
+                const rows = document.querySelectorAll('#accountsTable tbody tr:not(#noResultsRow)');
+                let visibleCount = 0;
+
+                rows.forEach(row => {
+                    const searchCell = row.querySelector('[data-search-team]');
+                    if (!searchCell) return;
+                    
+                    const name = row.querySelector('.fw-bold').innerText.toLowerCase();
+                    const handle = row.querySelector('.text-muted.small').innerText.toLowerCase();
+
+                    const matchesSearch = name.includes(query) || handle.includes(query);
+                    const matchesRole = role === 'all' || searchCell.dataset.searchRole === role;
+                    const matchesTeam = team === 'all' || searchCell.dataset.searchTeam === team;
+                    const matchesStatus = status === 'all' || searchCell.dataset.searchStatus === status;
+
+                    const show = (matchesSearch && matchesRole && matchesTeam && matchesStatus);
+                    row.style.display = show ? '' : 'none';
+                    if (show) visibleCount++;
+                });
+
+                const noResults = document.getElementById('noResultsRow');
+                if (noResults) {
+                    noResults.style.display = (visibleCount === 0) ? '' : 'none';
+                }
+            } catch (err) {
+                console.error("applyFilters error:", err);
+            }
+        }
+
+        function loadSavedFilters() {
+            try {
+                console.log("Loading saved filters for " + filterPrefix);
+                const query = localStorage.getItem(filterPrefix + 'query');
+                const role = localStorage.getItem(filterPrefix + 'role');
+                const team = localStorage.getItem(filterPrefix + 'team');
+                const status = localStorage.getItem(filterPrefix + 'status');
+
+                const searchInput = document.getElementById('userListSearch');
+                const roleSelect = document.getElementById('filterRole');
+                const teamSelect = document.getElementById('filterTeam');
+                const statusSelect = document.getElementById('filterStatus');
+
+                if (query !== null && searchInput) searchInput.value = query;
+                if (role !== null && roleSelect) roleSelect.value = role;
+                if (team !== null && teamSelect) teamSelect.value = team;
+                if (status !== null && statusSelect) statusSelect.value = status;
+                
+                applyFilters();
+            } catch (err) {
+                console.error("loadSavedFilters error:", err);
+            }
+        }
+
+        function clearFilters() {
+            const searchInput = document.getElementById('userListSearch');
+            const roleSelect = document.getElementById('filterRole');
+            const teamSelect = document.getElementById('filterTeam');
+            const statusSelect = document.getElementById('filterStatus');
+
+            if (searchInput) searchInput.value = '';
+            if (roleSelect) roleSelect.value = 'all';
+            if (teamSelect) teamSelect.value = 'all';
+            if (statusSelect) statusSelect.value = 'all';
+
+            applyFilters();
+        }
+
+        // --- Team Management Logic ---
+        function scrollToTeams() {
+            document.getElementById('teamsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function toggleTeamSection() {
+            scrollToTeams();
+        }
+
+        async function loadTeams() {
+            try {
+                console.log("Starting loadTeams...");
+                const res = await fetch('/api/teams?_=' + new Date().getTime());
+                if (!res.ok) throw new Error(`API failed with status ${res.status}`);
+                const data = await res.json();
+                console.log("Teams loaded:", data);
+                const container = document.getElementById('teamsListContainer');
+                if (!container) {
+                    console.error("teamsListContainer not found!");
+                    return;
+                }
+
+                container.innerHTML = '';
+                if (!data.teams || data.teams.length === 0) {
+                    container.innerHTML = '<div class="col-12 py-4 text-center text-muted">No teams found.</div>';
+                    return;
+                }
+
+                let foundMyTeam = false;
+                data.teams.forEach(team => {
+                    const col = document.createElement('div');
+                    col.className = 'col';
+                    
+                    // Defensive check for team properties
+                    const teamName = team.name || 'Unnamed Team';
+                    const teamPic = team.profile_picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(teamName)}&background=6366f1&color=fff`;
+                    const teamTag = team.team_tag || 'TEAM';
+                    const teamDesc = team.description || 'No description.';
+                    const memberCount = team.member_count !== undefined ? team.member_count : 0;
+                    const teamScore = team.team_score !== undefined ? team.team_score : 0;
+
+                    col.innerHTML = `
+                        <div class="card h-100 border p-3 team-bubble shadow-sm hover-shadow" style="cursor: pointer; transition: 0.3s;" onclick="showTeamDetails(${team.id})">
+                            <div class="d-flex align-items-center mb-2">
+                                <img src="${teamPic}" class="rounded me-2" style="width: 38px; height: 38px; object-fit: cover;">
+                                <div class="flex-grow-1 overflow-hidden">
+                                    <div class="fw-bold small text-truncate">${teamName}</div>
+                                    <div class="text-muted" style="font-size: 0.65rem;">${teamTag}</div>
+                                </div>
+                            </div>
+                            <p class="small text-muted mb-2 text-truncate-2" style="font-size: 0.75rem; height: 32px;">${teamDesc}</p>
+                            <div class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
+                                <span class="small text-muted" style="font-size: 0.7rem;">${memberCount} members</span>
+                                <span class="badge bg-primary-subtle text-primary" style="font-size: 0.6rem;">Score: ${teamScore}</span>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(col);
+
+                    // Update my team name if match
+                    const myTeamIdStr = "{{ my_team_id }}";
+                    if (myTeamIdStr && String(team.id) === myTeamIdStr) {
+                        const el = document.getElementById('myTeamName');
+                        if (el) el.textContent = team.name;
+                        foundMyTeam = true;
+                    }
+                });
+
+                if (!foundMyTeam && "{{ my_team_id }}") {
+                    const el = document.getElementById('myTeamName');
+                    if (el) el.textContent = "Unknown Team";
+                }
+            } catch (err) {
+                console.error("LoadTeams Error:", err);
+                const container = document.getElementById('teamsListContainer');
+                if (container) container.innerHTML = `<div class="col-12 py-4 text-center text-danger">Failed to load teams: ${err.message}</div>`;
+            }
+        }
+
+        async function requestJoinTeam(teamId) {
+            const res = await fetch('/api/teams/request-action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'join',
+                    user_id: "{{ session.get('user_id') }}",
+                    team_id: teamId
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alertUser(data.message || 'Request sent!', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                alertUser(data.error, 'error');
+            }
+        }
+
+        async function leaveTeam() {
+            askConfirmation(
+                "Leave Team?",
+                "Are you sure you want to leave your current team?",
+                "🚪",
+                async () => {
+                    const res = await fetch('/api/teams/leave', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.success) location.reload();
+                    else alertUser(data.error, 'error');
+                },
+                'btn-danger'
+            );
+        }
+
+        document.getElementById('createTeamForm')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+
+            const res = await fetch('/api/teams/create', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error);
+            }
+        });
+
+        async function confirmMoveUser() {
+            const userId = document.getElementById('moveUserId').value;
+            const teamId = document.getElementById('moveTeamSelect').value;
+
+            const res = await fetch('/api/teams/request-action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'move',
+                    user_id: userId,
+                    team_id: teamId
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.error);
+            }
+        }
+
+        // --- Team Details Logic ---
+        // showTeamDetails is now standardized in app.js
+
+        function toggleTeamEditMode(enable) {
+            document.getElementById('teamViewMode').style.display = enable ? 'none' : 'block';
+            document.getElementById('teamEditMode').style.display = enable ? 'block' : 'none';
+        }
+
+        document.getElementById('editTeamForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const teamId = document.getElementById('editTeamId').value;
+            const formData = new FormData(e.target);
+
+            const res = await fetch(`/api/teams/${teamId}/update`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (res.ok) {
+                location.reload();
+            } else {
+                const data = await res.json();
+                alert(data.error || "Failed to update team.");
+            }
+        });
+
+        function initiateMoveUser(userId) {
+            document.getElementById('moveUserId').value = userId;
+            const modal = new bootstrap.Modal(document.getElementById('moveUserModal'));
+            modal.show();
+        }
+
+        async function memberAction(username, action) {
+            if (action === 'transfer_leader' && !confirm(`Are you sure you want to transfer leadership to @${username}? You will become a Vice-Leader.`)) return;
+
+            const res = await fetch('/api/teams/member-action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, action })
+            });
+
+            if (res.ok) location.reload();
+            else alert("Failed to perform action.");
+        }
+
+        async function kickMember(username) {
+            if (!confirm(`Are you sure you want to kick @${username} from the team?`)) return;
+
+            const res = await fetch('/api/teams/kick', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username })
+            });
+
+            if (res.ok) location.reload();
+            else alert("Failed to kick member.");
+        }
+
+        async function confirmDeleteTeam(teamId, teamName) {
+            if (!confirm(`Are you sure you want to delete "${teamName}"? This will unassign all members.`)) return;
+
+            const res = await fetch(`/api/teams/${teamId}/delete`, { method: 'POST' });
+            if (res.ok) {
+                location.reload();
+            } else {
+                const data = await res.json();
+                alert(data.error || "Failed to delete team.");
+            }
+        }
+
+
         // VIEW USER
         async function viewUser(userId) {
             const res = await fetch(`/api/admin/user/${userId}`);
@@ -427,16 +1137,18 @@
                 const data = await res.json();
                 document.getElementById('viewUserName').textContent = data.name;
                 document.getElementById('viewUserHandle').textContent = `@${data.username}`;
-                document.getElementById('viewUserRole').textContent =
-                    data.role === 'super_admin' ? 'Super Admin' :
-                        data.role === 'admin' ? 'Admin' : 'Agent';
+                document.getElementById('viewUserRole').innerHTML =
+                    data.role === 'ultra_admin' ? '⚡ Ultra Admin' :
+                        data.role === 'super_admin' ? 'Super Admin' :
+                            data.role === 'admin' ? 'Admin' : 'Agent';
 
                 // Update badge color
                 const badge = document.getElementById('viewUserRole');
                 badge.className = 'badge px-3 py-2 ' + (
-                    data.role === 'super_admin' ? 'bg-primary-subtle text-primary' :
-                        data.role === 'admin' ? 'bg-info-subtle text-info' :
-                            'bg-secondary-subtle text-secondary'
+                    data.role === 'ultra_admin' ? 'role-ultra-admin' :
+                        data.role === 'super_admin' ? 'bg-primary-subtle text-primary' :
+                            data.role === 'admin' ? 'bg-info-subtle text-info' :
+                                'bg-secondary-subtle text-secondary'
                 );
                 document.getElementById('viewUserBio').textContent = data.bio || 'No biography available.';
 
@@ -444,11 +1156,16 @@
                     (data.profile_picture.startsWith('http') ? data.profile_picture : `/static/uploads/${data.profile_picture}`) :
                     `https://ui-avatars.com/api/?name=${data.name}&background=random`;
                 document.getElementById('viewUserPic').src = picUrl;
-
+                
+                // Populate score
+                document.getElementById('viewUserScore').textContent = data.agent_score || 0;
+                
                 const modal = new bootstrap.Modal(document.getElementById('viewUserModal'));
                 modal.show();
             }
         }
+
+
 
         // EDIT USER
         async function editUser(userId) {
@@ -459,7 +1176,15 @@
                 form.action = `/admin/edit-account/${userId}`;
 
                 document.getElementById('editUserName').value = data.name;
-                document.getElementById('editUserRole').value = data.role;
+                // Add Ultra Admin option if not present and data is ultra_admin
+                const roleSelect = document.getElementById('editUserRole');
+                if (data.role === 'ultra_admin' && !Array.from(roleSelect.options).some(o => o.value === 'ultra_admin')) {
+                    const opt = document.createElement('option');
+                    opt.value = 'ultra_admin';
+                    opt.textContent = 'Ultra Admin (Role Transfer)';
+                    roleSelect.appendChild(opt);
+                }
+                roleSelect.value = data.role;
                 document.getElementById('editUserBio').value = data.bio || '';
 
                 const picUrl = data.profile_picture ?
@@ -496,14 +1221,48 @@
         let pendingAction = null;
         let pendingReqId = null;
 
+        // Use showToast from app.js instead of alert
+        function alertUser(msg, type='blue') {
+            if (typeof showToast === 'function') {
+                showToast(msg, type === 'success' ? 'green' : (type === 'error' ? 'red' : 'blue'));
+            } else {
+                alert(msg);
+            }
+        }
+
+        function askConfirmation(title, message, icon, action, btnClass = 'btn-primary') {
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            document.getElementById('confirmIcon').textContent = icon;
+            const btn = document.getElementById('confirmActionBtn');
+            btn.className = `btn w-100 ${btnClass}`;
+            
+            // Unbind previous listeners to avoid double submits (simple way)
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+            
+            newBtn.onclick = () => {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('confirmationModal'));
+                modal.hide();
+                action();
+            };
+            const modal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+            modal.show();
+        }
+
         function showConfirmation(title, message, icon, action, reqId, confirmBtnClass = 'btn-primary') {
             document.getElementById('confirmTitle').textContent = title;
             document.getElementById('confirmMessage').textContent = message;
             document.getElementById('confirmIcon').textContent = icon;
 
             const btn = document.getElementById('confirmActionBtn');
-            btn.className = `btn w-100 ${confirmBtnClass}`;
-            btn.onclick = executeConfirmation;
+            
+            // Unbind previous
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+
+            newBtn.className = `btn w-100 ${confirmBtnClass}`;
+            newBtn.onclick = executeConfirmation;
 
             pendingAction = action;
             pendingReqId = reqId;
@@ -540,12 +1299,14 @@
         }
 
         function approvePromotion(reqId, currentApprovals, totalAdmins) {
-            // New approval count will be current + 1 (the current user)
-            const nextCount = currentApprovals + 1;
+            // Convert to numbers
+            const cur = parseInt(currentApprovals) || 0;
+            const tot = parseInt(totalAdmins) || 0;
+            const nextCount = cur + 1;
 
             showConfirmation(
                 'Approve Promotion?',
-                `This request has currently been approved by ${currentApprovals} out of ${totalAdmins} Super Admins.\n\nAfter your approval, it will be ${nextCount} / ${totalAdmins}.\n\nAre you sure you want to approve?`,
+                `This request has currently been approved by ${cur} out of ${tot} Super Admins.\n\nAfter your approval, it will be ${nextCount} / ${tot}.\n\nAre you sure you want to approve?`,
                 '✅',
                 'approve',
                 reqId,
@@ -564,6 +1325,32 @@
             );
         }
     </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        // --- Initialization ---
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log("create_account.html: DOMContentLoaded triggered");
+            try {
+                loadSavedFilters();
+            } catch (e) { console.error("Filter init failed", e); }
+            
+            const teamsContainer = document.getElementById('teamsListContainer');
+            if (teamsContainer) {
+                console.log("teamsListContainer found, starting loadTeams");
+                loadTeams();
+            } else {
+                console.log("teamsListContainer not found, skipping loadTeams (likely regular admin)");
+            }
+        });
+    </script>
+    <div id="siteToast" class="site-toast hidden">
+        <div class="toast-content">
+            <span id="toastMessage"></span>
+            <button class="toast-close" onclick="hideToast()">×</button>
+        </div>
+    </div>
 </body>
 
 </html>

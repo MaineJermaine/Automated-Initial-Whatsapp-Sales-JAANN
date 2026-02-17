@@ -19,11 +19,12 @@
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/my-team" class="nav-link nav-my-team">My Team</a>
         <a href="/templates-manager" class="nav-link nav-templates active">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') in ['super_admin', 'admin'] %}
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">
             Manage Accounts
             {% if pending_promotion_count and pending_promotion_count > 0 %}
@@ -204,7 +205,8 @@
                             placeholder="Type keyword & press Add">
                         <button type="button" class="btn btn-secondary" onclick="addKeyword()">Add</button>
                     </div>
-                    <div id="keywordList" class="d-flex flex-wrap gap-2"></div>
+                    <div id="keywordList" class="d-flex flex-wrap gap-2" style="max-height: 100px; overflow-y: auto;">
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label>Message</label>

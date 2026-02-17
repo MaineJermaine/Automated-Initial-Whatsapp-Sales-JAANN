@@ -47,36 +47,77 @@ function setupSearch() {
     const searchBar = document.querySelector('.taskbar-search');
     if (!searchBar) return; // No search bar on this page
 
+    // Prevent multiple dropdowns
+    if (document.querySelector('.search-results-dropdown')) return;
+
     const resultsDiv = document.createElement('div');
     resultsDiv.className = 'search-results-dropdown shadow';
+    
+    // Basic styling for the dropdown to ensure it looks good if not fully covered by CSS
+    resultsDiv.style.backgroundColor = 'white';
+    resultsDiv.style.border = '1px solid #ddd';
+    resultsDiv.style.borderRadius = '4px';
+    resultsDiv.style.maxHeight = '300px';
+    resultsDiv.style.overflowY = 'auto';
+    resultsDiv.style.display = 'none'; // Hidden by default
+
     document.body.appendChild(resultsDiv);
 
+    let debounceTimer;
+
     searchBar.addEventListener('input', (e) => {
-        const val = e.target.value.toLowerCase();
-        const registry = JSON.parse(localStorage.getItem('crm_search_index') || '[]');
-
-        if (!val) { resultsDiv.style.display = 'none'; return; }
-
-        const filtered = registry.filter(item => item.keyword.includes(val)).slice(0, 5);
-
-        if (filtered.length > 0) {
-            resultsDiv.innerHTML = filtered.map(item => `
-                <div class="search-item" onclick="window.location.href='${item.page}'">
-                    <span class="badge bg-light text-dark me-2">${item.category}</span>
-                    ${item.display}
-                </div>
-            `).join('');
-
-            const rect = searchBar.getBoundingClientRect();
-            resultsDiv.style.position = 'fixed';
-            resultsDiv.style.top = `${rect.bottom}px`;
-            resultsDiv.style.left = `${rect.left}px`;
-            resultsDiv.style.width = `${rect.width}px`;
-            resultsDiv.style.display = 'block';
-            resultsDiv.style.zIndex = '10000';
-        } else {
-            resultsDiv.style.display = 'none';
+        const val = e.target.value.trim();
+        
+        clearTimeout(debounceTimer);
+        
+        if (!val) { 
+            resultsDiv.style.display = 'none'; 
+            return; 
         }
+
+        debounceTimer = setTimeout(async () => {
+            try {
+                const res = await fetch(`/api/global-search?q=${encodeURIComponent(val)}`);
+                if (!res.ok) throw new Error('Search failed');
+                
+                const results = await res.json();
+                
+                if (results.length > 0) {
+                    resultsDiv.innerHTML = results.map(item => `
+                        <div class="search-item" onclick="window.location.href='${item.url}'" style="padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;">
+                            <span class="badge bg-light text-dark me-2">${item.category}</span>
+                            <span style="font-weight:500;">${item.display}</span>
+                        </div>
+                    `).join('');
+
+                    // Hover effect
+                    resultsDiv.querySelectorAll('.search-item').forEach(item => {
+                        item.addEventListener('mouseenter', () => item.style.backgroundColor = '#f8f9fa');
+                        item.addEventListener('mouseleave', () => item.style.backgroundColor = 'white');
+                    });
+
+                    const rect = searchBar.getBoundingClientRect();
+                    resultsDiv.style.position = 'fixed';
+                    resultsDiv.style.top = `${rect.bottom + 5}px`;
+                    resultsDiv.style.left = `${rect.left}px`;
+                    resultsDiv.style.width = `${rect.width}px`;
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.style.zIndex = '10000';
+                } else {
+                    resultsDiv.innerHTML = '<div style="padding:10px; color:#666;">No results found</div>';
+                    
+                    const rect = searchBar.getBoundingClientRect();
+                    resultsDiv.style.position = 'fixed';
+                    resultsDiv.style.top = `${rect.bottom + 5}px`;
+                    resultsDiv.style.left = `${rect.left}px`;
+                    resultsDiv.style.width = `${rect.width}px`;
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.style.zIndex = '10000';
+                }
+            } catch (err) {
+                console.error("Global search error:", err);
+            }
+        }, 300); // 300ms debounce
     });
 
     document.addEventListener('click', (e) => {
@@ -484,6 +525,7 @@ window.addEventListener('DOMContentLoaded', () => {
    ========================================================================== */
 
 function initNotificationBell() {
+    if (document.getElementById('notifBellBtn')) return;
     const sidebar = document.querySelector('.sidebar');
     if (!sidebar) return;
 
@@ -637,8 +679,453 @@ function formatNotifTime(dateStr) {
     }
 }
 
+
 function escapeNotifHtml(str) {
     const div = document.createElement('div');
     div.textContent = str || '';
     return div.innerHTML;
 }
+
+document.addEventListener('DOMContentLoaded', setupSearch);
+
+/* ==========================================================================
+   3. AGENT PROFILE MODAL (Standardized)
+   ========================================================================== */
+window.showAgentProfile = async function(userId) {
+    // Check if a standard modal exists, or if we need to inject it
+    let modalEl = document.getElementById('agentProfileModal');
+
+    // If 'agentProfileModal' doesn't exist, inject the standard one.
+    // NOTE: 'my_team.html' has its own 'agentProfileModal' hardcoded in the HTML.
+    // If we are on 'my_team.html', this element WILL exist, and we will use it.
+    // BUT 'my_team.html' ALSO has its own 'showAgentProfile' function defined in the template.
+    // That local function should override this global one on that page.
+    
+    if (!modalEl) {
+        const modalHtml = `
+<div class="modal fade" id="agentProfileModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 20px; overflow: hidden;">
+            <div class="modal-header border-0 pb-0 pt-4 px-4">
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <div class="mb-4 d-flex justify-content-center">
+                    <div style="width: 100px; height: 100px; border-radius: 30px; overflow: hidden; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+                        <img id="stdProfPic" src="" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+                        <div id="stdProfInitials" style="width: 100%; height: 100%; background: var(--blue); color: white; display: none; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 700;"></div>
+                    </div>
+                </div>
+                <h3 id="stdProfName" class="fw-bold mb-1"></h3>
+                <p id="stdProfUser" class="text-primary fw-600 mb-3"></p>
+                <div class="mb-4">
+                    <span id="stdProfRole" class="badge rounded-pill bg-light text-dark px-3 py-2 border shadow-sm" style="font-size: 0.75rem; letter-spacing: 0.05em;"></span>
+                </div>
+
+                <div class="mb-3" id="stdProfTeamSection" style="display:none;">
+                    <div class="d-flex align-items-center mb-1">
+                        <label class="small text-muted fw-bold text-uppercase" style="font-size: 0.65rem;">Team</label>
+                    </div>
+                    <div class="d-flex align-items-center gap-3 p-3 border rounded-4 bg-white shadow-sm hover-effect">
+                        <div class="avatar-circle bg-light text-dark border" style="width: 42px; height: 42px; font-size: 1rem; display: flex; align-items: center; justify-content: center;">
+                            <img id="stdProfTeamPic" src="" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:none;">
+                            <span id="stdProfTeamInitial" style="display:none;">T</span>
+                        </div>
+                        <div class="text-start flex-grow-1">
+                            <div class="fw-bold text-dark" id="stdProfTeamName"></div>
+                            <div class="text-muted small" id="stdProfTeamRole"></div>
+                        </div>
+                        <span class="badge bg-light text-secondary border" id="stdProfTeamTag"></span>
+                    </div>
+                </div>
+
+                <div class="mb-3" id="stdProfScoreSection">
+                    <div class="d-flex align-items-center mb-1">
+                        <label class="small text-muted fw-bold text-uppercase" style="font-size: 0.65rem;">Performance Score</label>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between p-3 border rounded-4 bg-white shadow-sm hover-effect">
+                        <div>
+                            <div class="h3 fw-bold text-primary mb-0" id="stdProfScore">0</div>
+                            <div class="small text-muted">Individual Score</div>
+                        </div>
+                        <i class="bi bi-trophy-fill fs-1 text-warning opacity-75"></i>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-light rounded-4 text-start mb-2" style="border: 1px dashed #ced4da;">
+                    <label class="small text-muted fw-bold mb-1 d-block text-uppercase" style="font-size: 0.65rem;">Biography</label>
+                    <p id="stdProfBio" class="small mb-0 text-secondary" style="line-height: 1.6;"></p>
+                </div>
+                
+                <!-- Container for page-specific actions (e.g., team management buttons) -->
+                <div id="stdProfActionContainer"></div>
+            </div>
+            <div class="modal-footer border-0 p-4">
+                <button type="button" class="btn btn-blue w-100 py-2 fw-bold" data-bs-dismiss="modal" style="border-radius: 12px;">Close Profile</button>
+            </div>
+        </div>
+    </div>
+</div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modalEl = document.getElementById('agentProfileModal');
+    }
+
+    try {
+        const res = await fetch(`/api/admin/user/${userId}`);
+        if (!res.ok) throw new Error('Failed to fetch user');
+        const user = await res.json();
+
+        // Helper to safely set text content
+        const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        
+        // Populate fields
+        setText('stdProfName', user.name);
+        setText('stdProfUser', '@' + user.username);
+        setText('stdProfBio', user.bio || 'No bio available.');
+        
+        // Populate Score - ensure it's properly set
+        const scoreEl = document.getElementById('stdProfScore');
+        if (scoreEl) {
+            scoreEl.textContent = user.agent_score || 0;
+        }
+
+        const roleEl = document.getElementById('stdProfRole');
+        if (roleEl) {
+            // Add lightning symbol for ultra admins
+            const roleText = user.role.replace('_', ' ').toUpperCase();
+            roleEl.textContent = user.role === 'ultra_admin' ? '⚡ ' + roleText : roleText;
+            
+            // Set colors: Ultra Admin = Yellow, Super Admin = Dark Blue, Admin = Light Blue, Agent = Light Gray
+            roleEl.className = 'badge rounded-pill px-3 py-2 border shadow-sm ' + 
+                (user.role === 'ultra_admin' ? 'bg-warning text-dark' : 
+                 (user.role === 'super_admin' ? 'bg-primary text-white' : 
+                  (user.role === 'admin' ? 'bg-info text-white' : 'bg-light text-dark')));
+        }
+
+        // Profile Picture
+        const picEl = document.getElementById('stdProfPic');
+        const initEl = document.getElementById('stdProfInitials');
+        if (user.profile_picture) {
+            let picUrl = user.profile_picture.startsWith('http') ? user.profile_picture : `/static/uploads/${user.profile_picture}`;
+            if (picEl) { picEl.src = picUrl; picEl.style.display = 'block'; }
+            if (initEl) initEl.style.display = 'none';
+        } else {
+            if (initEl) {
+                initEl.textContent = user.name ? user.name[0].toUpperCase() : '?';
+                initEl.style.display = 'flex';
+            }
+            if (picEl) picEl.style.display = 'none';
+        }
+
+        // Team Section
+        const teamSec = document.getElementById('stdProfTeamSection');
+        if (user.team_id) {
+            if (teamSec) teamSec.style.display = 'block';
+            setText('stdProfTeamName', user.team_name);
+            setText('stdProfTeamRole', (user.team_role || 'Member').toUpperCase());
+            setText('stdProfTeamTag', user.team_tag || 'TEAM');
+            
+            const tPic = document.getElementById('stdProfTeamPic');
+            const tInit = document.getElementById('stdProfTeamInitial');
+            
+            if (user.team_pic) {
+                let tUrl = user.team_pic.includes('http') ? user.team_pic : `/static/uploads/${user.team_pic}`;
+                if (tPic) { tPic.src = tUrl; tPic.style.display = 'block'; }
+                if (tInit) tInit.style.display = 'none';
+            } else {
+                if (tInit) {
+                    tInit.textContent = user.team_name ? user.team_name[0].toUpperCase() : 'T';
+                    tInit.style.display = 'flex';
+                }
+                if (tPic) tPic.style.display = 'none';
+            }
+            
+            // Make team section clickable to view team details
+            if (teamSec) {
+                teamSec.style.cursor = 'pointer';
+                teamSec.onclick = () => {
+                    // Close agent profile modal
+                    const agentModal = bootstrap.Modal.getInstance(modalEl);
+                    if (agentModal) agentModal.hide();
+                    // Show team details modal after a brief delay
+                    setTimeout(() => window.showTeamDetails(user.team_id), 300);
+                };
+                // Add hover effect
+                teamSec.classList.add('hover-effect');
+            }
+        } else {
+            if (teamSec) teamSec.style.display = 'none';
+        }
+
+
+        // Show Modal
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+
+    } catch (e) {
+        console.error("Error viewing profile:", e);
+        // Fallback or basic alert if something goes wrong
+        alert('Failed to load profile. Please try again.');
+    }
+};
+
+/* ==========================================================================
+   4. STANDARDIZED TEAM DETAILS MODAL
+   ========================================================================== */
+window.showTeamDetails = async function(teamId) {
+    // Check if modal exists, or inject it
+    let modalEl = document.getElementById('teamDetailsModal');
+    
+    if (!modalEl) {
+        const modalHtml = `
+<div class="modal fade" id="teamDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+            <div class="modal-header border-0 pb-0 pt-4 px-4">
+                <h5 class="modal-title fw-bold" id="stdTeamTitle">Team Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <!-- VIEW MODE -->
+                <div id="stdTeamViewMode">
+                    <div class="row mb-4">
+                        <div class="col-md-4 text-center border-end">
+                            <img id="stdTeamPic" src="" class="rounded mb-3 shadow-sm"
+                                style="width: 100px; height: 100px; object-fit: cover;">
+                            <div class="badge bg-primary-subtle text-primary px-3 py-2 mb-2" id="stdTeamTag">TAG</div>
+                            <div class="small fw-bold text-muted mb-1">TEAM SCORE</div>
+                            <div class="h4 fw-bold text-primary" id="stdTeamScore">0</div>
+                        </div>
+                        <div class="col-md-8 ps-4">
+                            <div class="mb-3">
+                                <label class="small fw-bold text-muted text-uppercase mb-1 d-block">Description</label>
+                                <p id="stdTeamDesc" class="mb-0 text-dark" style="font-size: 0.95rem;"></p>
+                            </div>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label class="small fw-bold text-muted text-uppercase mb-1 d-block">Role</label>
+                                    <p id="stdTeamRole" class="fw-bold text-primary"></p>
+                                </div>
+                                <div class="col-6">
+                                    <label class="small fw-bold text-muted text-uppercase mb-1 d-block">Department</label>
+                                    <p id="stdTeamDept" class="fw-bold text-blue"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold mb-3 border-bottom pb-2">Team Roster</h6>
+                    <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                        <table class="table table-sm align-middle">
+                            <thead class="table-light small">
+                                <tr>
+                                    <th>Member</th>
+                                    <th>Account Role</th>
+                                    <th>Team Role</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stdTeamMembers"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- EDIT MODE -->
+                <div id="stdTeamEditMode" style="display:none;">
+                    <form id="stdEditTeamForm">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-8">
+                                <label class="form-label small fw-bold">Team Name</label>
+                                <input type="text" id="stdEditTeamName" name="name" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold">Tag</label>
+                                <input type="text" id="stdEditTeamTag" name="team_tag" class="form-control" maxlength="5">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-bold">Description</label>
+                                <textarea id="stdEditTeamDesc" name="description" class="form-control" rows="2"></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Role / Purpose</label>
+                                <input type="text" id="stdEditTeamRole" name="role" class="form-control">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Department</label>
+                                <input type="text" id="stdEditTeamDept" name="department" class="form-control">
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <button type="button" class="btn btn-light" id="stdCancelEditBtn">Cancel</button>
+                            <button type="submit" class="btn btn-primary px-4">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top" id="stdTeamFooter">
+                    <div>
+                         <button class="btn btn-outline-danger btn-sm" id="stdDeleteTeamBtn" style="display:none;">
+                            <i class="bi bi-trash me-1"></i> Delete Team
+                         </button>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-light" data-bs-dismiss="modal" id="stdCloseModalBtn">Close</button>
+                        <button class="btn btn-outline-primary" id="stdEditTeamBtn" style="display:none;">Edit Team</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modalEl = document.getElementById('teamDetailsModal');
+
+        // Attach event listeners for the modal elements (only once)
+        document.getElementById('stdEditTeamBtn').onclick = () => toggleStdTeamEditMode(true);
+        document.getElementById('stdCancelEditBtn').onclick = () => toggleStdTeamEditMode(false);
+        
+        document.getElementById('stdEditTeamForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const tid = modalEl.getAttribute('data-team-id');
+            const formData = new FormData(e.target);
+            try {
+                const res = await fetch(`/api/teams/${tid}/update`, {
+                    method: 'POST',
+                    body: formData
+                });
+                if (res.ok) location.reload();
+                else alert("Failed to update team");
+            } catch (err) { console.error(err); }
+        };
+
+        document.getElementById('stdDeleteTeamBtn').onclick = () => {
+             const tid = modalEl.getAttribute('data-team-id');
+             const name = document.getElementById('stdTeamName').textContent;
+             if (confirm(`Are you sure you want to delete "${name}"? This will unassign all members.`)) {
+                 fetch(`/api/teams/${tid}/delete`, { method: 'POST' })
+                     .then(res => res.json())
+                     .then(data => {
+                         if (data.success) location.reload();
+                         else alert(data.error || "Failed to delete team");
+                     })
+                     .catch(err => console.error(err));
+             }
+        };
+    }
+
+    // Helper to toggle edit mode
+    const toggleStdTeamEditMode = (enable) => {
+        document.getElementById('stdTeamViewMode').style.display = enable ? 'none' : 'block';
+        document.getElementById('stdTeamEditMode').style.display = enable ? 'block' : 'none';
+        document.getElementById('stdCloseModalBtn').style.display = enable ? 'none' : 'block';
+        document.getElementById('stdEditTeamBtn').style.display = enable ? 'none' : (modalEl.getAttribute('data-can-edit') === 'true' ? 'block' : 'none');
+        document.getElementById('stdDeleteTeamBtn').style.display = enable ? 'none' : (modalEl.getAttribute('data-can-edit') === 'true' ? 'block' : 'none');
+        document.getElementById('stdTeamTitle').textContent = enable ? 'Edit Team Details' : 'Team Details';
+    };
+
+    try {
+        const res = await fetch(`/api/teams/${teamId}/details`);
+        if (!res.ok) throw new Error("Failed to load team");
+        const data = await res.json();
+        const team = data.team;
+
+        modalEl.setAttribute('data-team-id', teamId);
+        toggleStdTeamEditMode(false); // Reset to view mode
+
+        // Determine if user has edit rights
+        // Check global window variables or similar. Many pages provide session info.
+        const myId = window.currUserId || 0; 
+        const myRole = window.currUserRole || 'agent';
+        // Fallback: If on create_account.html, we likely have access to some indicators
+        // For now, simplify logic: if they are ultra/super admin, they can edit.
+        // We can find the role from navigation if needed, or just let the API tell us later.
+        // Better: Fetch current user if not available.
+        
+        let canEdit = false;
+        // Attempt to find user role from common page elements if window variables aren't set
+        const roleIndicator = document.body.getAttribute('data-user-role'); 
+        const actualRole = myRole !== 'agent' ? myRole : (roleIndicator || '');
+        
+        if (actualRole === 'ultra_admin' || actualRole === 'super_admin') {
+            canEdit = true;
+        } else {
+            // Check if they are the leader of this team
+            const leader = data.members.find(m => m.username === window.currUsername && m.team_role === 'leader');
+            if (leader) canEdit = true;
+        }
+        
+        modalEl.setAttribute('data-can-edit', canEdit);
+        document.getElementById('stdEditTeamBtn').style.display = canEdit ? 'block' : 'none';
+        document.getElementById('stdDeleteTeamBtn').style.display = canEdit ? 'block' : 'none';
+
+        // Helper to safely set text content
+        const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+
+        // Populate view mode
+        setText('stdTeamName', team.name);
+        setText('stdTeamTag', team.team_tag || 'TEAM');
+        setText('stdTeamScore', team.team_score || 0);
+        setText('stdTeamDesc', team.description || 'No description.');
+        setText('stdTeamRole', team.role || 'N/A');
+        setText('stdTeamDept', team.department || 'General');
+
+        // Populate edit mode fields
+        setVal('stdEditTeamName', team.name);
+        setVal('stdEditTeamTag', team.team_tag || '');
+        setVal('stdEditTeamDesc', team.description || '');
+        setVal('stdEditTeamRole', team.role || '');
+        setVal('stdEditTeamDept', team.department || '');
+
+        // Team picture
+        const picEl = document.getElementById('stdTeamPic');
+        if (picEl) {
+            if (team.profile_picture) {
+                picEl.src = team.profile_picture.includes('http') ? team.profile_picture : `/static/uploads/${team.profile_picture}`;
+            } else {
+                picEl.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(team.name)}&background=random`;
+            }
+        }
+
+        // Populate members table
+        const membersBody = document.getElementById('stdTeamMembers');
+        if (membersBody) {
+            membersBody.innerHTML = '';
+            data.members.forEach(m => {
+                const tr = document.createElement('tr');
+                const picUrl = (m.pic && m.pic.includes('http')) ? m.pic : (m.pic ? '/static/uploads/' + m.pic : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(m.name));
+                
+                tr.innerHTML = `
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <img src="${picUrl}" 
+                                 class="rounded-circle me-2" style="width:24px;height:24px;object-fit:cover;">
+                            <div>
+                                <div class="fw-bold small">${m.name}</div>
+                                <div class="text-muted" style="font-size:0.7em">@${m.username}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="small">${m.role.replace('_', ' ')}</td>
+                    <td><span class="badge bg-light text-dark border small" style="font-size:0.75em">${m.team_role || 'member'}</span></td>
+                `;
+                
+                tr.style.cursor = 'pointer';
+                tr.onclick = () => {
+                    const teamModal = bootstrap.Modal.getInstance(modalEl);
+                    if (teamModal) teamModal.hide();
+                    setTimeout(() => window.showAgentProfile(m.id), 300);
+                };
+                
+                membersBody.appendChild(tr);
+            });
+        }
+
+        // Show Modal
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+
+    } catch (err) {
+        console.error(err);
+        alert("Error loading team details");
+    }
+};

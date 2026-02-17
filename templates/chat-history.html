@@ -381,20 +381,52 @@
             padding: 20px 18px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 16px;
             background-image: radial-gradient(#e2e8f0 0.5px, transparent 0.5px);
             background-size: 20px 20px;
         }
 
+        .message-row {
+            display: flex;
+            gap: 10px;
+            max-width: 85%;
+        }
+
+        .message-row.mine {
+            flex-direction: row-reverse;
+            align-self: flex-end;
+        }
+
+        .message-row.other {
+            align-self: flex-start;
+        }
+
+        .chat-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            flex-shrink: 0;
+            overflow: hidden;
+            background: #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: #475569;
+            border: 1px solid rgba(0,0,0,0.05);
+            margin-top: 4px;
+        }
+
         /* --- Chat bubbles --- */
         .chat-bubble {
-            max-width: 72%;
             padding: 10px 14px;
             border-radius: 14px;
             font-size: 0.86rem;
             line-height: 1.5;
             position: relative;
             transition: 0.15s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
 
         .chat-bubble:hover .msg-delete-btn {
@@ -411,28 +443,25 @@
         .bubble-customer {
             background: #f1f5f9;
             color: #334155;
-            align-self: flex-start;
-            border-bottom-left-radius: 4px;
+            border-top-left-radius: 4px;
         }
 
         .bubble-bot {
             background: #fffbeb;
             border: 1px solid #fde68a;
             color: #78350f;
-            align-self: flex-start;
-            border-bottom-left-radius: 4px;
+            border-top-left-radius: 4px;
             font-size: 0.82rem;
-        }
-
-        .bubble-bot::before {
-            content: '🤖 ';
         }
 
         .bubble-agent {
             background: var(--blue);
             color: white;
-            align-self: flex-end;
-            border-bottom-right-radius: 4px;
+            border-top-right-radius: 4px;
+        }
+
+        .bubble-agent.mine {
+            background: var(--blue);
         }
 
         .bubble-agent .bubble-time {
@@ -449,6 +478,7 @@
             font-size: 0.8rem;
             border-radius: 10px;
             max-width: 90%;
+            padding: 10px 14px;
         }
 
         .bubble-keyword-match {
@@ -762,8 +792,13 @@
 </head>
 
 <script>
-    window.backendSearchSeed = {{ search_seed | tojson }};
-    window.ruleKeywords = {{ rule_keywords | tojson }};
+    // Global User Context for Standardized Modals
+    window.currUserId = {{ session.get('user_id', 0) }};
+    window.currUserRole = "{{ session.get('user_role', 'agent') }}";
+    window.currUsername = "{{ session.get('user_username', '') }}";
+
+    window.backendSearchSeed = {{ search_seed | tojson if search_seed is defined else 'null' }};
+    window.ruleKeywords = {{ rule_keywords | tojson if rule_keywords is defined else '[]' }};
 </script>
 
 <body id="page-history" class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
@@ -771,11 +806,22 @@
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/my-team" class="nav-link nav-my-team d-flex justify-content-between align-items-center">
+            My Team
+            <div class="d-flex align-items-center gap-1">
+                {% if unread_team_messages %}
+                <span class="rounded-circle bg-warning" style="width: 10px; height: 10px; display: inline-block;"></span>
+                {% endif %}
+                {% if team_pending_requests_count and team_pending_requests_count > 0 %}
+                <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+                {% endif %}
+            </div>
+        </a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history active">Chat History</a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') in ['super_admin', 'admin'] %}
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">
             Manage Accounts
             {% if pending_promotion_count and pending_promotion_count > 0 %}
@@ -995,7 +1041,11 @@
                 <div class="modal-body">
                     <ul class="nav nav-tabs mb-3" id="linkCustomerTabs">
                         <li class="nav-item">
-                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabLinkExistingCust"
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPromoteCust"
+                                type="button">✨ Promote</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabLinkExistingCust"
                                 type="button">Existing</button>
                         </li>
                         <li class="nav-item">
@@ -1005,8 +1055,27 @@
                     </ul>
 
                     <div class="tab-content">
+                        <!-- PROMOTE -->
+                        <div class="tab-pane fade show active" id="tabPromoteCust">
+                            <div class="text-center py-4 px-2">
+                                <div class="mb-4">
+                                    <div class="fs-1 mb-2">✨</div>
+                                    <h6 class="fw-bold">Promote to Customer</h6>
+                                    <p class="small text-muted">Instantly convert this visitor into a permanent CRM customer using their chat details.</p>
+                                </div>
+                                <div class="p-3 border rounded-4 bg-light text-start mb-4">
+                                    <div class="small mb-1"><span class="text-muted">Name:</span> <strong id="promoteName">...</strong></div>
+                                    <div class="small mb-1"><span class="text-muted">Email:</span> <strong id="promoteEmail">...</strong></div>
+                                    <div class="small"><span class="text-muted">Phone:</span> <strong id="promotePhone">...</strong></div>
+                                </div>
+                                <button id="modalPromoteBtn" class="btn btn-blue w-100 py-3 rounded-4 fw-bold shadow-sm" onclick="promoteCurrentVisitor()">
+                                    Promote Now
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- LINK EXISTING -->
-                        <div class="tab-pane fade show active" id="tabLinkExistingCust">
+                        <div class="tab-pane fade" id="tabLinkExistingCust">
                             <p class="small text-muted">Select a customer to link to this conversation.</p>
                             <select class="form-select" id="linkCustomerSelect">
                                 <option value="">-- None --</option>
@@ -1119,7 +1188,10 @@
         // ===== STATE =====
         let currentSessionId = null;
         let currentSessionStatus = null;
-        let currentAssignedAgentId = null; // Added this line
+        let currentAssignedAgentId = null;
+        let currentLinkedCustomerId = null;
+        let currentVisitorEmail = null; // Added
+        let currentVisitorPhone = null; // Added
         let currentSessionTags = [];
         const keywords = window.ruleKeywords || [];
         const currentView = '{{ current_view }}';
@@ -1319,6 +1391,9 @@
             const data = await res.json();
             currentSessionStatus = data.session.status;
             currentAssignedAgentId = data.session.assigned_agent_id;
+            currentLinkedCustomerId = data.session.linked_customer_id;
+            currentVisitorEmail = data.session.visitor_email;
+            currentVisitorPhone = data.session.visitor_phone;
 
             // Parse tags
             currentSessionTags = (data.session.tags || '').split(',').filter(t => t.trim());
@@ -1336,7 +1411,7 @@
                 if (data.session.linked_customer_id) {
                     window.location.href = '/customer/' + data.session.linked_customer_id;
                 } else {
-                    alert('No customer linked to this session.');
+                    openLinkCustomerModal();
                 }
             };
             document.getElementById('chatAvatar').onclick = headerNameLink.onclick;
@@ -1387,7 +1462,7 @@
                 statusEl.innerHTML = '<span style="color:#94a3b8;">⚪ Closed</span>';
             }
 
-            const isSuperAdmin = '{{ user_role }}' === 'super_admin';
+            const isSuperAdmin = ['super_admin', 'ultra_admin'].includes('{{ user_role }}');
 
             // 2. Action Buttons & Input State
             actionsDiv.innerHTML = '';
@@ -1517,59 +1592,85 @@
         function renderMessages(messages) {
             const container = document.getElementById('chatMessagesScroll');
             container.innerHTML = '';
-
             messages.forEach(msg => {
+                container.appendChild(createMessageRow(msg));
+            });
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function createMessageRow(msg) {
+            if (msg.sender_type === 'system') {
                 const div = document.createElement('div');
-                let bubbleClass = 'bubble-customer';
-                if (msg.sender_type === 'bot') bubbleClass = 'bubble-bot';
-                else if (msg.sender_type === 'agent') bubbleClass = 'bubble-agent';
-                else if (msg.sender_type === 'system') bubbleClass = 'bubble-system';
+                div.className = 'bubble-system';
+                div.innerHTML = `<div>${escapeHtml(msg.text)}</div>`;
+                return div;
+            }
 
-                div.className = `chat-bubble ${bubbleClass}`;
-                div.dataset.msgId = msg.id;
+            const isResponder = msg.sender_type === 'agent' || msg.sender_type === 'bot';
+            const row = document.createElement('div');
+            row.className = `message-row ${isResponder ? 'mine' : 'other'}`;
 
-                // Check for keyword matches in customer messages
-                let textHtml = escapeHtml(msg.text);
-                let hasMatch = false;
-                if (msg.sender_type === 'customer') {
-                    const lowerText = msg.text.toLowerCase();
-                    for (const kw of keywords) {
-                        if (lowerText.includes(kw)) {
-                            hasMatch = true;
-                            const regex = new RegExp(`(${escapeRegex(kw)})`, 'gi');
-                            textHtml = textHtml.replace(regex, '<span class="keyword-highlight">$1</span>');
-                        }
+            let bubbleClass = 'bubble-customer';
+            if (msg.sender_type === 'bot') bubbleClass = 'bubble-bot';
+            else if (msg.sender_type === 'agent') bubbleClass = 'bubble-agent';
+
+            // Avatar Logic
+            let avatarHtml = '';
+            if (msg.sender_type === 'bot') {
+                avatarHtml = '<span>🤖</span>';
+            } else if (msg.sender_type === 'agent') {
+                const picUrl = msg.pic ? (msg.pic.includes('http') ? msg.pic : `/static/uploads/${msg.pic}`) : '';
+                avatarHtml = picUrl 
+                    ? `<img src="${picUrl}" style="width:100%; height:100%; object-fit:cover;">` 
+                    : `<span>${msg.sender_name[0].toUpperCase()}</span>`;
+            } else {
+                // Customer
+                avatarHtml = `<span>${msg.sender_name[0].toUpperCase()}</span>`;
+            }
+
+            // Keyword match logic
+            let textHtml = escapeHtml(msg.text);
+            let hasMatch = false;
+            if (msg.sender_type === 'customer') {
+                const lowerText = msg.text.toLowerCase();
+                for (const kw of keywords) {
+                    if (lowerText.includes(kw)) {
+                        hasMatch = true;
+                        const regex = new RegExp(`(${escapeRegex(kw)})`, 'gi');
+                        textHtml = textHtml.replace(regex, '<span class="keyword-highlight">$1</span>');
                     }
                 }
+            }
 
-                if (hasMatch) div.classList.add('bubble-keyword-match');
+            // Edit & Delete buttons container
+            let actionBtns = '';
+            if (msg.sender_type === 'agent' || msg.sender_type === 'bot') {
+                actionBtns = `
+                    <div class="msg-actions">
+                        <button class="msg-action-btn edit" onclick="editMessage(${msg.id}, this)" title="Edit message">✎</button>
+                        <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>
+                    </div>
+                 `;
+            } else if (msg.sender_type === 'customer') {
+                actionBtns = `
+                    <div class="msg-actions">
+                        <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>
+                    </div>
+                 `;
+            }
 
-                // Edit & Delete buttons container
-                let actionBtns = '';
-                if (msg.sender_type === 'agent' || msg.sender_type === 'bot') {
-                    actionBtns = `
-                        <div class="msg-actions">
-                            <button class="msg-action-btn edit" onclick="editMessage(${msg.id}, this)" title="Edit message">✎</button>
-                            <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>
-                        </div>
-                     `;
-                } else if (msg.sender_type === 'customer') {
-                    actionBtns = `
-                        <div class="msg-actions">
-                            <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>
-                        </div>
-                     `;
-                }
-
-                div.innerHTML = `
+            row.innerHTML = `
+                <div class="chat-avatar shadow-sm" title="${msg.sender_name}">
+                    ${avatarHtml}
+                </div>
+                <div class="chat-bubble ${bubbleClass} ${hasMatch ? 'bubble-keyword-match' : ''}" data-msgId="${msg.id}">
                     ${actionBtns}
+                    <div><small class="fw-bold opacity-75">${msg.sender_name}</small></div>
                     <div>${textHtml}</div>
-                    ${msg.sender_type !== 'system' ? `<div class="bubble-time">${msg.timestamp || ''}</div>` : ''}
-                `;
-                container.appendChild(div);
-            });
-
-            container.scrollTop = container.scrollHeight;
+                    <div class="bubble-time">${msg.timestamp || ''}</div>
+                </div>
+            `;
+            return row;
         }
 
         // ===== DELETE MESSAGE =====
@@ -1647,17 +1748,7 @@
             const data = await res.json();
             if (data.ok) {
                 const container = document.getElementById('chatMessagesScroll');
-                const div = document.createElement('div');
-                div.className = 'chat-bubble bubble-agent';
-                div.dataset.msgId = data.message.id;
-                div.innerHTML = `
-                    <div class="msg-actions">
-                        <button class="msg-action-btn delete" onclick="deleteMessage(${data.message.id}, this)" title="Delete message">✕</button>
-                    </div>
-                    <div>${escapeHtml(data.message.text)}</div>
-                    <div class="bubble-time">${data.message.timestamp}</div>
-                `;
-                container.appendChild(div);
+                container.appendChild(createMessageRow(data.message));
                 container.scrollTop = container.scrollHeight;
             }
         }
@@ -1805,8 +1896,62 @@
 
         // ===== LINK CUSTOMER =====
         function openLinkCustomerModal() {
+            // Update Promote tab info
+            const name = document.getElementById('chatHeaderName').textContent.trim();
+            document.getElementById('promoteName').textContent = name;
+            document.getElementById('promoteEmail').textContent = currentVisitorEmail || 'Not Provided';
+            document.getElementById('promotePhone').textContent = currentVisitorPhone || 'Not Provided';
+
+            // Disable Promote tab if already linked to a customer
+            const promoteTabBtn = document.querySelector('button[data-bs-target="#tabPromoteCust"]');
+            const existingTabBtn = document.querySelector('button[data-bs-target="#tabLinkExistingCust"]');
+            
+            if (currentLinkedCustomerId) {
+                if (promoteTabBtn) {
+                    promoteTabBtn.parentElement.style.display = 'none';
+                }
+                if (existingTabBtn) {
+                    bootstrap.Tab.getOrCreateInstance(existingTabBtn).show();
+                }
+            } else {
+                if (promoteTabBtn) {
+                    promoteTabBtn.parentElement.style.display = 'block';
+                    bootstrap.Tab.getOrCreateInstance(promoteTabBtn).show();
+                }
+            }
+
             const modal = new bootstrap.Modal(document.getElementById('linkCustomerModal'));
             modal.show();
+        }
+
+        async function promoteCurrentVisitor() {
+            if (!currentSessionId) return;
+            const btn = document.getElementById('modalPromoteBtn');
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Promoting...';
+
+            try {
+                const res = await fetch(`/api/chat/session/${currentSessionId}/become-customer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    const modalEl = document.getElementById('linkCustomerModal');
+                    bootstrap.Modal.getInstance(modalEl).hide();
+                    if (typeof showToast === 'function') showToast('Visitor promoted successfully!', 'green');
+                    setTimeout(() => location.reload(), 600);
+                } else {
+                    alert('Error: ' + data.error);
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
+            } catch (err) {
+                console.error(err);
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
         }
 
         async function handleLinkCustomer() {
@@ -2094,36 +2239,11 @@
                 item.style.display = (name.includes(q) || preview.includes(q) || tags.includes(q)) ? '' : 'none';
             });
         }
-        async function showAgentProfile(userId) {
-            try {
-                const res = await fetch(`/api/admin/user/${userId}`);
-                if (!res.ok) throw new Error('Failed to fetch user');
-                const user = await res.json();
+        // Use the standardized showAgentProfile from app.js
+        // This function is defined globally in app.js and will be used across all pages
 
-                document.getElementById('profName').textContent = user.name;
-                document.getElementById('profUser').textContent = '@' + user.username;
-                document.getElementById('profRole').textContent = user.role.replace('_', ' ').toUpperCase();
-                document.getElementById('profBio').textContent = user.bio || 'No bio available.';
 
-                let picUrl = user.profile_picture;
-                if (picUrl) {
-                    if (!picUrl.startsWith('http')) picUrl = `/static/uploads/${picUrl}`;
-                    document.getElementById('profPic').src = picUrl;
-                    document.getElementById('profPic').style.display = 'block';
-                    document.getElementById('profInitials').style.display = 'none';
-                } else {
-                    document.getElementById('profInitials').textContent = user.name[0].toUpperCase();
-                    document.getElementById('profInitials').style.display = 'flex';
-                    document.getElementById('profPic').style.display = 'none';
-                }
-
-                const modal = new bootstrap.Modal(document.getElementById('agentProfileModal'));
-                modal.show();
-            } catch (err) {
-                console.error(err);
-                alert('Could not load agent profile.');
-            }
-        }
+        // showTeamDetails is now standardized in app.js
         async function showVisitorProfile(sessionId) {
             try {
                 const res = await fetch(`/api/chat/session/${sessionId}/profile`);
@@ -2325,43 +2445,11 @@
         </div>
     </div>
 
-    <!-- Agent Profile Modal -->
-    <div class="modal fade" id="agentProfileModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow-lg" style="border-radius: 20px; overflow: hidden;">
-                <div class="modal-header border-0 pb-0 pt-4 px-4">
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-4 text-center">
-                    <div class="mb-4 d-flex justify-content-center">
-                        <div
-                            style="width: 100px; height: 100px; border-radius: 30px; overflow: hidden; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
-                            <img id="profPic" src=""
-                                style="width: 100%; height: 100%; object-fit: cover; display: none;">
-                            <div id="profInitials"
-                                style="width: 100%; height: 100%; background: var(--blue); color: white; display: none; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 700;">
-                            </div>
-                        </div>
-                    </div>
-                    <h3 id="profName" class="fw-bold mb-1"></h3>
-                    <p id="profUser" class="text-primary fw-600 mb-3"></p>
-                    <div class="mb-4">
-                        <span id="profRole" class="badge rounded-pill bg-light text-dark px-3 py-2 border shadow-sm"
-                            style="font-size: 0.75rem; letter-spacing: 0.05em;"></span>
-                    </div>
-                    <div class="p-3 bg-light rounded-4 text-start mb-2" style="border: 1px dashed #ced4da;">
-                        <label class="small text-muted fw-bold mb-1 d-block text-uppercase"
-                            style="font-size: 0.65rem;">Biography</label>
-                        <p id="profBio" class="small mb-0 text-secondary" style="line-height: 1.6;"></p>
-                    </div>
-                </div>
-                <div class="modal-footer border-0 p-4">
-                    <button type="button" class="btn btn-blue w-100 py-2 fw-bold" data-bs-dismiss="modal"
-                        style="border-radius: 12px;">Close Profile</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <!-- Agent Profile Modal is now standardized and injected by app.js -->
+
+
+    <!-- Team Details Modal is now standardized and injected by app.js -->
+
 
     <!-- Forced Transfer Modal (Super Admin) -->
     <div class="modal fade" id="adminTransferModal" tabindex="-1" aria-hidden="true">
@@ -2389,6 +2477,9 @@
             </div>
         </div>
     </div>
+
+    <!-- TOAST SYSTEM -->
+    <div id="siteToast" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 9999;"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>

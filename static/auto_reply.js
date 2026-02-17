@@ -653,16 +653,38 @@ function toggleChatFAQItem(id, e) {
     if (e) e.stopPropagation();
 
     console.log('toggleChatFAQItem called with id:', id);
-    const faqItem = document.getElementById(`chat-faq-${id}`);
-    if (!faqItem) {
-        console.error('FAQ item not found:', `chat-faq-${id}`);
+
+    // Find the FAQ object
+    const f = faqs.find(x => x.id === id);
+    if (!f) {
+        console.error('FAQ not found in local data:', id);
         return;
     }
 
-    faqItem.classList.toggle('open');
-    console.log('FAQ item toggled, now open:', faqItem.classList.contains('open'));
+    // 1. Simulate user ask
+    addMsg(f.question, 'user');
 
-    // Increment click count and reload FAQ data
+    // 2. Hide FAQ list
+    const section = document.getElementById('chatFaqSection');
+    const btn = document.getElementById('showFaqButton');
+
+    if (section) {
+        section.style.display = 'none';
+        // Force the inline style override
+        section.setAttribute('style', 'display: none !important; background:#f8f9fa;');
+    }
+    if (btn) {
+        btn.style.display = 'block';
+        btn.setAttribute('style', 'display: block !important; cursor: pointer;');
+    }
+    faqSectionOpen = false;
+
+    // 3. Simulate bot answer
+    setTimeout(() => {
+        addMsg(f.answer, 'bot', 'FAQ');
+    }, 500);
+
+    // 4. Increment stats
     fetch(`/api/faqs/${id}/click`, { method: 'POST' }).then(() => {
         console.log('FAQ click count incremented');
         loadFAQs(); // Reload FAQs to update stats

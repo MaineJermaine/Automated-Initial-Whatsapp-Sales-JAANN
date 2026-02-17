@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Team - CRM</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+    <style>
+        .chat-container {
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f1f5f9;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message-row {
+            display: flex;
+            gap: 10px;
+            max-width: 85%;
+        }
+
+        .message-row.mine {
+            flex-direction: row-reverse;
+            align-self: flex-end;
+        }
+
+        .message-row.other {
+            align-self: flex-start;
+        }
+
+        .chat-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            flex-shrink: 0;
+            overflow: hidden;
+            background: #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: #475569;
+            border: 1px solid rgba(0,0,0,0.05);
+            margin-top: 4px;
+        }
+
+        .message-bubble {
+            padding: 10px 14px;
+            border-radius: 14px;
+            font-size: 0.9rem;
+            position: relative;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .message-row.mine .message-bubble {
+            background: var(--blue, #3b82f6);
+            color: white;
+            border-top-right-radius: 2px;
+        }
+
+        .message-row.other .message-bubble {
+            background: white;
+            border: 1px solid #e2e8f0;
+            color: #1e293b;
+            border-top-left-radius: 2px;
+        }
+
+        .message-info {
+            font-size: 0.75rem;
+            margin-bottom: 4px;
+            color: #64748b;
+        }
+
+        .message-row.mine .message-info {
+            color: rgba(255, 255, 255, 0.82);
+            text-align: right;
+        }
+    </style>
+    <!-- Injected Data for JS -->
+    <script>
+        // Store members for the Admin Transfer Modal
+        window.teamMembers = [
+            {% for m in members %}
+            {
+                id: {{ m.id }},
+                username: "{{ m.username }}",
+                name: "{{ m.name }}",
+                team_role: "{{ m.team_role }}",
+                profile_picture: "{{ m.profile_picture or '' }}"
+            },
+            {% endfor %}
+        ];
+    </script>
+</head>
+
+<body id="page-my-team" class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
+    <aside class="sidebar">
+        <h2>CRM Admin</h2>
+        <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
+        <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/my-team" class="nav-link nav-my-team active d-flex justify-content-between align-items-center">
+            My Team
+            <div class="d-flex align-items-center gap-1">
+                {% if unread_team_messages %}
+                <span class="rounded-circle bg-warning" style="width: 10px; height: 10px; display: inline-block;"></span>
+                {% endif %}
+                {% if team_pending_requests_count and team_pending_requests_count > 0 %}
+                <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+                {% endif %}
+            </div>
+        </a>
+        <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
+        <a href="/history" class="nav-link nav-history">Chat History</a>
+        <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
+        <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
+        <a href="/admin/create-account" class="nav-link nav-admin">
+            Manage Accounts
+            {% if pending_promotion_count and pending_promotion_count > 0 %}
+            <span class="badge bg-danger ms-2" style="font-size: 0.7em;">!</span>
+            {% endif %}
+        </a>
+        {% endif %}
+        <div class="mt-auto pt-3 border-top border-secondary" style="border-color: rgba(255,255,255,0.1) !important;">
+            <div class="dropdown">
+                <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle" id="dropdownUser1"
+                    data-bs-toggle="dropdown" aria-expanded="false">
+                    <div class="avatar-circle bg-primary text-white me-2"
+                        style="width: 32px; height: 32px; font-size: 14px; display:flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden;">
+                        {% if session.get('user_pic') and 'http' in session.get('user_pic') %}
+                        <img src="{{ session.get('user_pic') }}" alt="User"
+                            style="width:100%; height:100%; object-fit:cover;">
+                        {% elif session.get('user_pic') %}
+                        <img src="{{ url_for('static', filename='uploads/' + session.get('user_pic')) }}" alt="User"
+                            style="width:100%; height:100%; object-fit:cover;">
+                        {% else %}
+                        {{ session.get('user_name', 'Admin')[0] | upper }}
+                        {% endif %}
+                    </div>
+                    <strong>{{ session.get('user_name', 'Admin') }}</strong>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdownUser1">
+                    <li><a class="dropdown-item" href="/profile">Edit Profile</a></li>
+                    <li><a class="dropdown-item" href="/settings">Settings</a></li>
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
+                    <li><a class="dropdown-item" href="/logout">Sign out</a></li>
+                </ul>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main">
+        <div class="header d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0">My Team</h1>
+            <div class="d-flex align-items-center gap-3">
+            </div>
+        </div>
+
+        {% if team %}
+        <div class="row g-4 h-100">
+            <!-- Left Info Panel -->
+            <div class="col-md-4">
+
+                <!-- Pending Requests Notification (Only for leaders) -->
+                {% if user.team_role == 'leader' and pending_join_requests %}
+                <div class="card p-3 mb-3 border-warning bg-warning-subtle">
+                    <h6 class="fw-bold text-warning-emphasis mb-2">Pending Join Requests</h6>
+                    <ul class="list-group list-group-flush bg-transparent">
+                        {% for req in pending_join_requests %}
+                        <li class="list-group-item bg-transparent d-flex justify-content-between align-items-center px-0 py-2">
+                             <div>
+                                 <strong class="text-dark small">{{ req.target_user.name }}</strong>
+                                 <div class="text-muted" style="font-size:0.7em">@{{ req.target_user.username }}</div>
+                             </div>
+                             <div class="d-flex gap-1">
+                                 <button class="btn btn-sm btn-success py-0 px-2" onclick="handleTeamRequest('{{ req.id }}', 'approve')"><i class="bi bi-check me-1"></i>Approve</button>
+                                 <button class="btn btn-sm btn-danger py-0 px-2" onclick="handleTeamRequest('{{ req.id }}', 'reject')"><i class="bi bi-x me-1"></i>Reject</button>
+                             </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="card p-4 h-100">
+                    <div class="text-center mb-4">
+                        {% if team.profile_picture %}
+                        {% if 'http' in team.profile_picture %}
+                        <img src="{{ team.profile_picture }}" class="rounded mb-3 shadow-sm"
+                            style="width: 120px; height: 120px; object-fit: cover;">
+                        {% else %}
+                        <img src="{{ url_for('static', filename='uploads/' + team.profile_picture) }}"
+                            class="rounded mb-3 shadow-sm" style="width: 120px; height: 120px; object-fit: cover;">
+                        {% endif %}
+                        {% else %}
+                        <div class="bg-primary text-white rounded d-flex align-items-center justify-content-center mx-auto mb-3 shadow-sm"
+                            style="width: 120px; height: 120px; font-size: 3rem;">
+                            {{ team.name[0] | upper }}
+                        </div>
+                        {% endif %}
+
+                        <h4 class="fw-bold mb-1">{{ team.name }}</h4>
+                        <div class="badge bg-primary-subtle text-primary mb-2">{{ team.team_tag or 'TEAM' }}</div>
+                        <p class="text-muted small">{{ team.description or 'No description provided.' }}</p>
+
+                        <div class="mt-3 d-flex justify-content-center gap-2">
+                            {% if user.team_role == 'leader' %}
+                            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
+                                data-bs-target="#editTeamModal">Edit Team</button>
+                            {% endif %}
+                            <button class="btn btn-sm btn-outline-danger" onclick="leaveTeam()">Leave Team</button>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between text-muted small mb-2">
+                            <span>DEPARTMENT</span>
+                            <span class="fw-bold text-dark">{{ team.department or 'General' }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between text-muted small mb-2">
+                            <span>SCORE</span>
+                            <span class="fw-bold text-dark">{{ calculated_team_score }}</span>
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold border-bottom pb-2 mb-3">Team Members ({{ members|length }})</h6>
+                    <div class="list-group list-group-flush" style="overflow-y: auto; max-height: 400px;">
+                        {% for m in members %}
+                        <div class="list-group-item px-0 py-2 border-0 d-flex align-items-center list-group-item-action"
+                            onclick="showTeamMemberProfile({{ m.id }})" style="cursor: pointer;">
+                            <div class="avatar-circle me-2 bg-light text-dark border"
+                                style="width: 32px; height: 32px; font-size: 0.8rem;">
+                                {% if m.profile_picture %}
+                                <img src="{{ m.profile_picture if 'http' in m.profile_picture else url_for('static', filename='uploads/' + m.profile_picture) }}"
+                                    style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
+                                {% else %}
+                                {{ m.name[0] | upper }}
+                                {% endif %}
+                            </div>
+                            <div class="flex-grow-1 overflow-hidden">
+                                <div class="fw-bold small text-truncate">{{ m.name }}
+                                    {% if m.id == user.id %}<span class="text-muted fw-normal">(You)</span>{% endif %}
+                                </div>
+                                <div class="text-muted" style="font-size: 0.7rem;">@{{ m.username }} • {{
+                                    m.team_role|upper }}</div>
+                            </div>
+                            <span class="badge {{ 'bg-success' if m.is_online else 'bg-secondary' }} p-1 rounded-circle"
+                                style="width: 8px; height: 8px;"
+                                title="{{ 'Online' if m.is_online else 'Offline' }}"></span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Panel -->
+            <div class="col-md-8">
+                <div class="chat-container h-100">
+                    <div class="p-3 border-bottom bg-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0 fw-bold">Team Chat</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadMessages()">
+                            <i class="bi bi-arrow-clockwise">Refresh</i>
+                        </button>
+                    </div>
+
+                    <div id="chatMessages" class="chat-messages" style="overflow-y: auto; max-height: 500px;">
+                        <!-- Messages loaded via JS -->
+                        <div class="text-center text-muted py-5">Loading messages...</div>
+                    </div>
+
+                    <div class="p-3 bg-white border-top">
+                        <form id="chatForm" class="d-flex gap-2" onsubmit="sendMessage(event)">
+                            <input type="text" id="chatInput" class="form-control"
+                                placeholder="Type a message to your team..." required autocomplete="off">
+                            <button type="submit" class="btn btn-primary">Send</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Team Modal -->
+        <div class="modal fade" id="editTeamModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Edit Team</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="editTeamForm">
+                            <input type="hidden" name="team_id" value="{{ team.id }}">
+                            <div class="mb-3">
+                                <label class="form-label">Team Name</label>
+                                <input type="text" name="name" class="form-control" value="{{ team.name }}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Description</label>
+                                <textarea name="description" class="form-control"
+                                    rows="3">{{ team.description }}</textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Team Tag</label>
+                                <input type="text" name="team_tag" class="form-control" value="{{ team.team_tag }}">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Department</label>
+                                <input type="text" name="department" class="form-control" value="{{ team.department }}">
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="submitEditTeam()">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% else %}
+        <!-- NO TEAM VIEW -->
+        <div class="container py-5">
+            <div class="text-center mb-5">
+                <div class="mb-3" style="font-size: 3rem;">🏢</div>
+                <h2 class="fw-bold">You are not part of any teams</h2>
+                <p class="text-muted">Browse the available teams below and request to join the one that fits your role.
+                </p>
+            </div>
+
+            <div class="row g-4 justify-content-center">
+                {% if all_teams %}
+                {% for t in all_teams %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="card h-100 shadow-sm border-0 hover-effect rounded-4">
+                        <div class="card-body text-center p-4">
+                            <div class="mb-3 d-flex justify-content-center">
+                                {% if t.profile_picture and 'http' in t.profile_picture %}
+                                <img src="{{ t.profile_picture }}" class="rounded shadow-sm"
+                                    style="width: 80px; height: 80px; object-fit: cover;">
+                                {% elif t.profile_picture %}
+                                <img src="{{ url_for('static', filename='uploads/' + t.profile_picture) }}"
+                                    class="rounded shadow-sm" style="width: 80px; height: 80px; object-fit: cover;">
+                                {% else %}
+                                <div class="bg-primary text-white rounded d-flex align-items-center justify-content-center shadow-sm"
+                                    style="width: 80px; height: 80px; font-size: 2rem;">
+                                    {{ t.name[0] | upper }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            <h5 class="fw-bold mb-1">{{ t.name }}</h5>
+                            <div class="badge bg-light text-dark mb-3">{{ t.team_tag or 'TEAM' }}</div>
+                            <p class="text-muted small mb-3">{{ t.description or 'No description provided.' }}</p>
+
+                            <hr class="opacity-10 my-3">
+
+                            <div class="d-flex justify-content-between text-muted small mb-3 px-3">
+                                <div><i class="fas fa-users me-1"></i> {{ t.members|length }} Members</div>
+                                <div><i class="fas fa-star me-1"></i> {{ t.team_score }} Score</div>
+                            </div>
+
+                            {% if t.id in my_requests %}
+                            <button class="btn btn-secondary w-100" disabled>Request Pending</button>
+                            {% else %}
+                            <button class="btn btn-outline-primary w-100 fw-bold"
+                                onclick="requestJoinTeam({{ t.id }})">Request to Join</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-center text-muted">No teams exist yet. Ask an admin to create one!</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Edit Team Modal -->
+        <div class="modal fade" id="editTeamModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Edit Team Details</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="editTeamForm">
+                            <div class="mb-3 text-center">
+                                <label class="form-label fw-bold">Team Profile Picture</label>
+                                <div class="mb-2">
+                                    {% if team and team.profile_picture %}
+                                    {% if 'http' in team.profile_picture %}
+                                    <img id="teamPicPreview" src="{{ team.profile_picture }}" class="rounded shadow-sm" style="width: 100px; height: 100px; object-fit: cover;">
+                                    {% else %}
+                                    <img id="teamPicPreview" src="{{ url_for('static', filename='uploads/' + team.profile_picture) }}" class="rounded shadow-sm" style="width: 100px; height: 100px; object-fit: cover;">
+                                    {% endif %}
+                                    {% else %}
+                                    <div id="teamPicPreview" class="bg-primary text-white rounded d-flex align-items-center justify-content-center mx-auto shadow-sm" style="width: 100px; height: 100px; font-size: 2.5rem;">
+                                        {{ team.name[0] | upper if team else 'T' }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <input type="file" class="form-control" id="profile_picture" name="profile_picture" accept="image/png, image/jpeg, image/jpg" onchange="previewTeamPic(event)">
+                                <small class="text-muted">Upload JPG or PNG (max 5MB)</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Team Name</label>
+                                <input type="text" class="form-control" name="name" value="{{ team.name if team else '' }}" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Description</label>
+                                <textarea class="form-control" name="description" rows="3">{{ team.description if team else '' }}</textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Team Tag</label>
+                                <input type="text" class="form-control" name="team_tag" value="{{ team.team_tag if team else '' }}" placeholder="e.g., SALES, SUPPORT">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Department</label>
+                                <input type="text" class="form-control" name="department" value="{{ team.department if team else '' }}">
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="submitEditTeam()">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+
+    <script>
+        // Global User Context for Standardized Modals
+        window.currUserId = {{ session.get('user_id', 0) }};
+        window.currUserRole = "{{ session.get('user_role', 'agent') }}";
+        window.currUsername = "{{ session.get('user_username', '') }}";
+
+        const teamId = "{{ team.id if team else 0 }}";
+        const currentUserId = "{{ user.id }}";
+        let lastMsgId = 0;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (teamId) {
+                loadMessages();
+                setInterval(loadMessages, 3000); // Poll every 3 seconds
+            }
+        });
+
+        async function loadMessages() {
+            try {
+                const res = await fetch(`/api/teams/${teamId}/chat?since=${lastMsgId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                if (data.messages && data.messages.length > 0) {
+                    const container = document.getElementById('chatMessages');
+
+                    // Clear "Loading..." if first load
+                    if (lastMsgId === 0) container.innerHTML = '';
+
+                    let shouldScroll = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
+
+                    data.messages.forEach(msg => {
+                        if (msg.id > lastMsgId) {
+                            lastMsgId = msg.id;
+                            const isMine = msg.user_id == currentUserId;
+                            const row = document.createElement('div');
+                            row.className = `message-row ${isMine ? 'mine' : 'other'}`;
+
+                            // Avatar logic
+                            const picUrl = msg.pic ? (msg.pic.includes('http') ? msg.pic : `/static/uploads/${msg.pic}`) : '';
+                            const avatarHtml = picUrl 
+                                ? `<img src="${picUrl}" style="width:100%; height:100%; object-fit:cover;">` 
+                                : `<span>${msg.name[0].toUpperCase()}</span>`;
+
+                            row.innerHTML = `
+                                <div class="chat-avatar shadow-sm" title="${msg.name}">
+                                    ${avatarHtml}
+                                </div>
+                                <div class="message-bubble">
+                                    <div class="message-info">
+                                        ${!isMine ? `<span class="fw-bold">${msg.name}</span> • ` : ''} 
+                                        ${msg.created_at.split(' ')[1] || msg.created_at}
+                                    </div>
+                                    <div class="message-text">${msg.message}</div>
+                                </div>
+                            `;
+                            container.appendChild(row);
+                        }
+                    });
+
+                    if (shouldScroll || lastMsgId === data.messages.length) { // simplistic logic
+                        container.scrollTop = container.scrollHeight;
+                    }
+                } else if (lastMsgId === 0) {
+                    document.getElementById('chatMessages').innerHTML = '<div class="text-center text-muted py-5">No messages yet. Say hello!</div>';
+                }
+            } catch (err) {
+                console.error("Chat load error", err);
+            }
+        }
+
+        async function sendMessage(e) {
+            e.preventDefault();
+            const input = document.getElementById('chatInput');
+            const txt = input.value.trim();
+            if (!txt) return;
+
+            input.value = '';
+
+            try {
+                const res = await fetch(`/api/teams/${teamId}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: txt })
+                });
+                if (res.ok) {
+                    loadMessages(); // Instant refresh
+                }
+            } catch (err) {
+                alertUser("Failed to send message: " + err, 'error');
+            }
+        }
+
+        async function requestJoinTeam(teamId) {
+            try {
+                const res = await fetch('/api/teams/request-action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'join', team_id: teamId, user_id: "{{ user.id }}" })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alertUser('Request sent successfully!', 'success');
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    alertUser(data.error || 'Failed to send request', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                alertUser('Error sending request', 'error');
+            }
+        }
+
+        async function leaveTeam() {
+            askConfirmation(
+                "Leave Team?",
+                "Are you sure you want to leave this team? You will lose access to team chat and records.",
+                "🚪",
+                async () => {
+                    try {
+                        const res = await fetch('/api/teams/leave', { method: 'POST' });
+                        const data = await res.json();
+                        if (data.success) {
+                            window.location.reload();
+                        } else {
+                            alertUser(data.error || 'Failed to leave team', 'error');
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alertUser('Error leaving team', 'error');
+                    }
+                },
+                'btn-danger'
+            );
+        }
+
+        async function submitEditTeam() {
+            const form = document.getElementById('editTeamForm');
+            const formData = new FormData(form);
+            // Need to convert form values to JSON since older APIs might expect JSON or form-data differently.
+            // app.py update_team uses request.form, so FormData is fine but need to send as POST form data.
+            // Wait, fetch with body=formData automatically sets multipart/form-data.
+
+            try {
+                const res = await fetch(`/api/teams/${teamId}/update`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alertUser(data.error || 'Update failed', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                alertUser('Error updating team', 'error');
+            }
+        }
+
+        function previewTeamPic(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('teamPicPreview');
+                    // Replace the preview element with an img if it's a div
+                    if (preview.tagName === 'DIV') {
+                        const img = document.createElement('img');
+                        img.id = 'teamPicPreview';
+                        img.className = 'rounded shadow-sm';
+                        img.style.cssText = 'width: 100px; height: 100px; object-fit: cover;';
+                        img.src = e.target.result;
+                        preview.parentNode.replaceChild(img, preview);
+                    } else {
+                        preview.src = e.target.result;
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Override the global showAgentProfile to add team-specific actions only on this page
+        const _originalShowAgentProfile = window.showAgentProfile;
+        window.showAgentProfile = async function(userId) {
+            // 1. Call original global function to show base modal
+            if (typeof _originalShowAgentProfile === 'function') {
+                await _originalShowAgentProfile(userId);
+            } else {
+                // Fetch and show manually if global not ready (fallback)
+                console.warn("Global showAgentProfile not found, falling back.");
+            }
+            
+            // 2. Add team-specific leadership actions
+            try {
+                const res = await fetch(`/api/admin/user/${userId}`);
+                if (!res.ok) return;
+                const viewedUser = await res.json();
+                
+                // Get the action container from the standardized modal
+                const actionContainer = document.getElementById('stdProfActionContainer');
+                if (!actionContainer) return;
+                
+                actionContainer.innerHTML = ''; // Clear previous actions
+
+                // Leadership Logic
+                const myRole = "{{ user.team_role }}"; // 'leader', 'vice_leader', 'member'
+                const mySystemRole = "{{ session.get('user_role') }}"; // 'ultra_admin', 'super_admin', etc.
+                const myId = {{ user.id }};
+                const currentTeamId = {{ team.id if team else 0 }};
+                
+                const isAdmin = (mySystemRole === 'ultra_admin' || mySystemRole === 'super_admin');
+                const isLeader = (myRole === 'leader' || isAdmin);
+
+                // Only leaders/admins can act on others in their team
+                if (isLeader && viewedUser.id !== myId && viewedUser.team_id == currentTeamId) {
+                    const btnGroup = document.createElement('div');
+                    btnGroup.className = 'd-flex flex-wrap justify-content-center gap-2 mt-3 p-3 bg-light rounded-4 border';
+                    btnGroup.style.borderStyle = 'dashed';
+
+                    // 1. Promote / Demote
+                    if (viewedUser.team_role === 'member') {
+                        const btnPromote = document.createElement('button');
+                        btnPromote.className = 'btn btn-sm btn-success px-3';
+                        btnPromote.innerHTML = '<i class="bi bi-arrow-up-circle me-1"></i> Promote to Vice';
+                        btnPromote.onclick = () => memberAction(viewedUser.username, 'promote_vice');
+                        btnGroup.appendChild(btnPromote);
+                    } else if (viewedUser.team_role === 'vice_leader') {
+                        const btnDemote = document.createElement('button');
+                        btnDemote.className = 'btn btn-sm btn-outline-warning text-dark px-3';
+                        btnDemote.innerHTML = '<i class="bi bi-arrow-down-circle me-1"></i> Demote to Member';
+                        btnDemote.onclick = () => memberAction(viewedUser.username, 'demote');
+                        btnGroup.appendChild(btnDemote);
+                    }
+
+                    // 2. Transfer Leadership
+                    const btnTransfer = document.createElement('button');
+                    btnTransfer.className = 'btn btn-sm btn-warning text-dark px-3';
+                    btnTransfer.innerHTML = '<i class="bi bi-arrow-left-right me-1"></i> Transfer Lead';
+                    btnTransfer.onclick = () => {
+                        if (viewedUser.team_role === 'leader' && isAdmin) {
+                            openTransferModal();
+                        } else {
+                            const leader = window.teamMembers.find(m => m.team_role === 'leader');
+                            const leaderName = leader ? leader.name : 'the current leader';
+                            
+                            const message = isAdmin 
+                                ? `Transfer ${leaderName}'s leadership to ${viewedUser.name}? ${leaderName} will become a Vice Leader.`
+                                : `Transfer leadership to ${viewedUser.name}? You will become a Vice Leader.`;
+                            
+                            askConfirmation(
+                                "Transfer Leadership?",
+                                message,
+                                "👑",
+                                () => memberAction(viewedUser.username, 'transfer_leader'),
+                                'btn-warning'
+                            );
+                        }
+                    };
+                    btnGroup.appendChild(btnTransfer);
+
+                    // 3. Kick Member
+                    const btnKick = document.createElement('button');
+                    btnKick.className = 'btn btn-sm btn-outline-danger px-3';
+                    btnKick.innerHTML = '<i class="bi bi-person-x me-1"></i> Kick';
+                    btnKick.onclick = () => {
+                        askConfirmation(
+                            "Kick Member?",
+                            `Are you sure you want to kick ${viewedUser.name} from the team?`,
+                            "👢",
+                            () => kickMember(viewedUser.username),
+                            'btn-danger'
+                        );
+                    };
+                    btnGroup.appendChild(btnKick);
+
+                    actionContainer.appendChild(btnGroup);
+                }
+            } catch (err) {
+                console.error('Error adding team actions:', err);
+            }
+        };
+
+        // Redir for existing calls to showTeamMemberProfile if any (cleanup)
+        async function showTeamMemberProfile(userId) {
+            return window.showAgentProfile(userId);
+        }
+
+
+
+        // Action Handlers
+        async function handleTeamRequest(reqId, action) {
+            try {
+                const res = await fetch('/api/teams/handle-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ request_id: reqId, action: action })
+                });
+                const data = await res.json();
+                if (data.success) location.reload();
+                else alertUser(data.error, 'error');
+            } catch (e) { console.error(e); }
+        }
+
+        async function memberAction(username, action) {
+            try {
+                const res = await fetch('/api/teams/member-action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username, action: action })
+                });
+                const data = await res.json();
+                if (data.success) location.reload();
+                else alertUser(data.error, 'error');
+            } catch (e) { console.error(e); }
+        }
+
+        async function kickMember(username) {
+            try {
+                const res = await fetch('/api/teams/kick', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username })
+                });
+                const data = await res.json();
+                if (data.success) location.reload();
+                else alertUser(data.error, 'error');
+            } catch (e) { console.error(e); }
+        }
+    </script>
+
+    <!-- Agent Profile Modal is now standardized and injected by app.js -->
+
+
+    <!-- Toast System -->
+    <div id="siteToast" class="site-toast hidden">
+        <div class="toast-content">
+            <span id="toastMessage"></span>
+            <button class="toast-close" onclick="hideToast()">×</button>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal fade" id="confirmationModal" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+                <div class="modal-body p-4 text-center">
+                    <div id="confirmIcon" class="mb-3" style="font-size: 3rem;">❓</div>
+                    <h5 id="confirmTitle" class="fw-bold mb-2">Are you sure?</h5>
+                    <p id="confirmMessage" class="text-muted small mb-4"></p>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-light flex-grow-1" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" id="confirmActionBtn" class="btn btn-primary flex-grow-1">Confirm</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transfer Leadership Modal (Admin Only) -->
+    <div class="modal fade" id="transferLeaderModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 12px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">Transfer Leadership</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">Select a member to transfer leadership to. The current leader will be demoted to Vice Leader.</p>
+                    <div class="list-group list-group-flush" id="transferCandidatesList" style="max-height: 300px; overflow-y: auto;">
+                        <!-- Candidates injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openTransferModal() {
+            const list = document.getElementById('transferCandidatesList');
+            list.innerHTML = '';
+            
+            // Filter candidates: All except current leader
+            // We need access to 'members' array from Python.
+            // Since we are inside a Jinja loop usually, we need the full list.
+            // We can parse the 'current_team_members' if we serialize it, 
+            // OR simpler: iterate over the DOM elements we already have? 
+            // Better: Serialize members to a JS variable at the top.
+            
+            const candidates = window.teamMembers || []; // We need to define this
+            
+            candidates.forEach(m => {
+                if (m.team_role !== 'leader') {
+                    const item = document.createElement('button');
+                    item.className = 'list-group-item list-group-item-action d-flex align-items-center gap-3 py-3';
+                    let avatarHtml = '';
+                    if (m.profile_picture) {
+                        let picUrl = m.profile_picture;
+                        if (!picUrl.startsWith('http')) picUrl = `/static/uploads/${picUrl}`;
+                        avatarHtml = `<img src="${picUrl}" style="width:32px;height:32px;object-fit:cover;border-radius:50%;">`;
+                    } else {
+                        avatarHtml = `
+                            <div class="avatar-circle" style="width:32px;height:32px;font-size:12px;display:flex;align-items:center;justify-content:center;background:#e9ecef;border-radius:50%;">
+                                ${m.name.charAt(0).toUpperCase()}
+                            </div>
+                        `;
+                    }
+
+                    item.innerHTML = `
+                        ${avatarHtml}
+                        <div>
+                            <div class="fw-bold text-dark">${m.name}</div>
+                            <div class="small text-muted">@${m.username} • ${m.team_role}</div>
+                        </div>
+                    `;
+                    item.onclick = () => {
+                        // Close modal and confirm
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('transferLeaderModal'));
+                        modal.hide();
+                        askConfirmation(
+                            "Confirm Transfer",
+                            `Transfer leadership to ${m.name}?`,
+                            "👑",
+                            () => memberAction(m.username, 'transfer_leader'),
+                            'btn-warning'
+                        );
+                    };
+                    list.appendChild(item);
+                }
+            });
+
+            const modal = new bootstrap.Modal(document.getElementById('transferLeaderModal'));
+            modal.show();
+        }
+    </script>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        // Use showToast from app.js instead of alert
+        function alertUser(msg, type='blue') {
+            if (typeof showToast === 'function') {
+                showToast(msg, type === 'success' ? 'green' : (type === 'error' ? 'red' : 'blue'));
+            } else {
+                alert(msg);
+            }
+        }
+
+        let pendingAction = null;
+        function askConfirmation(title, message, icon, action, btnClass = 'btn-primary') {
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            document.getElementById('confirmIcon').textContent = icon;
+            const btn = document.getElementById('confirmActionBtn');
+            btn.className = `btn flex-grow-1 ${btnClass}`;
+            btn.onclick = () => {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('confirmationModal'));
+                modal.hide();
+                action();
+            };
+            const modal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+            modal.show();
+        }
+    </script>
+</body>
+
+</html>

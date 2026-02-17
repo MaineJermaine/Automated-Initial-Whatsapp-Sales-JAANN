@@ -28,6 +28,13 @@ class User(db.Model):
     role = db.Column(db.String(20), default='agent') # super_admin, agent
     preferences = db.Column(db.Text, default='{}') # Stores dashboard layout/stats as JSON
     last_active = db.Column(db.String(50))
+    team_id = db.Column(db.Integer, db.ForeignKey('team.id'), nullable=True)
+    team_role = db.Column(db.String(20)) # leader, vice_leader, member
+    last_active_team_chat = db.Column(db.String(50)) # Timestamp of last time user viewed team chat
+
+    @property
+    def is_online(self):
+        return self.status_display == "Active"
 
     @property
     def status_display(self):
@@ -61,9 +68,43 @@ class PromotionRequest(db.Model):
     status = db.Column(db.String(20), default='pending') # pending, approved, rejected
     approvals = db.Column(db.Text, default='[]') # JSON list of user_ids who approved
     created_at = db.Column(db.String(50))
+    target_role = db.Column(db.String(20), default='super_admin')
     
     target_user = db.relationship('User', foreign_keys=[target_user_id], backref='promotion_requests')
     requester = db.relationship('User', foreign_keys=[requester_id], backref='sent_promotion_requests')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+class Team(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    profile_picture = db.Column(db.String(255), default='https://ui-avatars.com/api/?name=Team&background=random')
+    description = db.Column(db.Text, default='')
+    role = db.Column(db.String(50)) # e.g., "Corporate Sales", "Customer Support"
+    department = db.Column(db.String(50))
+    team_score = db.Column(db.Integer, default=0)
+    team_tag = db.Column(db.String(50))
+    created_at = db.Column(db.String(50))
+    
+    # Relationship to members
+    members = db.relationship('User', backref='team_obj', foreign_keys='User.team_id', lazy=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+class TeamRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    team_id = db.Column(db.Integer, db.ForeignKey('team.id'), nullable=True) # nullable if it's a request to leave? No, leave is automatic. 
+    requester_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    type = db.Column(db.String(20)) # join, move, invite
+    status = db.Column(db.String(20), default='pending') # pending, approved, rejected
+    created_at = db.Column(db.String(50))
+    
+    target_user = db.relationship('User', foreign_keys=[user_id], backref='team_requests')
+    target_team = db.relationship('Team', backref='team_requests')
+    requester = db.relationship('User', foreign_keys=[requester_id], backref='initiated_team_requests')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -103,6 +144,171 @@ class Inquiry(db.Model):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+def calculate_team_score(team_id):
+    """
+    Calculate team score based on:
+    - Inquiries assigned to team members (status + type points)
+    - Chat sessions assigned to team members (6 base + lead score/10)
+    """
+    import math
+    
+    team = Team.query.get(team_id)
+    if not team:
+        return 0
+    
+    total_score = 0
+    
+    # Get all team member usernames
+    team_members = User.query.filter_by(team_id=team_id).all()
+    member_usernames = [m.username for m in team_members]
+    member_ids = [m.id for m in team_members]
+    
+    if not member_usernames:
+        return 0
+    
+    # 1. Calculate score from inquiries
+    inquiries = Inquiry.query.filter(Inquiry.assigned_rep.in_(member_usernames)).all()
+    
+    for inquiry in inquiries:
+        # Status points
+        status_points = {
+            'New': 1,
+            'In Progress': 3,
+            'Urgent': 5,
+            'Resolved': 0
+        }.get(inquiry.status, 0)
+        
+        # Type points
+        type_points = {
+            'Sales': 4,
+            'Support': 2,
+            'Product': 3
+        }.get(inquiry.inquiry_type, 0)
+        
+        total_score += status_points + type_points
+    
+    # 2. Calculate score from chat sessions
+    chat_sessions = ChatSession.query.filter(ChatSession.assigned_agent_id.in_(member_ids)).all()
+    
+    for chat in chat_sessions:
+        # Base 6 points per chat
+        chat_score = 6
+        
+        # Check if it's a lead and add lead score / 10 (rounded up)
+        if hasattr(chat, 'is_lead') and chat.is_lead:
+            lead_score = getattr(chat, 'calculated_score', 0)
+            if lead_score > 0:
+                chat_score += math.ceil(lead_score / 10)
+        else:
+            # Calculate if it's a lead using the existing logic
+            session_score = calculate_session_score(chat)
+            if session_score > 0:
+                chat_score += math.ceil(session_score / 10)
+        
+        total_score += chat_score
+    
+    return total_score
+
+def calculate_agent_score(user_id):
+    """
+    Calculate individual agent score based on:
+    - Inquiries assigned to the agent (status + type points)
+    - Chat sessions assigned to the agent (6 base + lead score/10)
+    """
+    import math
+    
+    user = User.query.get(user_id)
+    if not user:
+        return 0
+    
+    total_score = 0
+    
+    # 1. Calculate score from inquiries assigned to this agent
+    inquiries = Inquiry.query.filter_by(assigned_rep=user.username).all()
+    
+    for inquiry in inquiries:
+        # Status points
+        status_points = {
+            'New': 1,
+            'In Progress': 3,
+            'Urgent': 5,
+            'Resolved': 0
+        }.get(inquiry.status, 0)
+        
+        # Type points
+        type_points = {
+            'Sales': 4,
+            'Support': 2,
+            'Product': 3
+        }.get(inquiry.inquiry_type, 0)
+        
+        total_score += status_points + type_points
+    
+    # 2. Calculate score from chat sessions assigned to this agent
+    chat_sessions = ChatSession.query.filter_by(assigned_agent_id=user.id).all()
+    
+    for chat in chat_sessions:
+        # Base 6 points per chat
+        chat_score = 6
+        
+        # Check if it's a lead and add lead score / 10 (rounded up)
+        session_score = calculate_session_score(chat)
+        if session_score > 0:
+            chat_score += math.ceil(session_score / 10)
+        
+        total_score += chat_score
+    
+    return total_score
+
+@app.before_request
+def inject_sidebar_counts():
+    if not session.get('logged_in'):
+        return
+
+    user_id = session.get('user_id')
+    if not user_id:
+        return
+
+    # Using g to store temporary globals for templates
+    from flask import g
+    user = User.query.get(user_id)
+    if not user:
+        return
+
+    # 1. Pending Join Requests (Leader only)
+    g.team_pending_requests_count = 0
+    if user.team_id and user.team_role == 'leader':
+        g.team_pending_requests_count = TeamRequest.query.filter_by(
+            team_id=user.team_id, status='pending', type='join'
+        ).count()
+
+    # 2. Unread Team Messages
+    g.unread_team_messages = False
+    if user.team_id:
+        last_read = user.last_active_team_chat
+        
+        query = TeamMessage.query.filter_by(team_id=user.team_id)
+        if last_read:
+             query = query.filter(TeamMessage.created_at > last_read)
+        
+        # Don't count own messages
+        query = query.filter(TeamMessage.user_id != user.id)
+        
+        unread_count = query.count()
+        if unread_count > 0:
+            g.unread_team_messages = True
+
+@app.context_processor
+def context_processor():
+    # Make g variables available in templates without 'g.' prefix if desired, 
+    # but normally context_processor returns a dict.
+    # Let's return them explicitly.
+    from flask import g
+    return dict(
+        team_pending_requests_count=getattr(g, 'team_pending_requests_count', 0),
+        unread_team_messages=getattr(g, 'unread_team_messages', False)
+    )
+
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     inquiry_id = db.Column(db.Integer, db.ForeignKey('inquiry.id'), nullable=False)
@@ -110,6 +316,19 @@ class Message(db.Model):
     text = db.Column(db.Text)
     time = db.Column(db.String(50))
     is_agent = db.Column(db.Boolean, default=False)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+class TeamMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    team_id = db.Column(db.Integer, db.ForeignKey('team.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.String(50)) 
+    
+    user = db.relationship('User', backref='team_messages')
+    team = db.relationship('Team', backref='messages')
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -298,7 +517,7 @@ def seed_admin():
             password=generate_password_hash('fjr1300A15'), 
             name='Admin User', 
             bio='System Administrator',
-            role='super_admin'
+            role='ultra_admin'
         )
         db.session.add(admin)
         db.session.commit()
@@ -412,14 +631,39 @@ def inject_pending_counts():
     if not session.get('logged_in'): 
         return {}
     
-    pending_count = 0
-    if session.get('user_role') == 'super_admin':
-        try:
-            pending_count = PromotionRequest.query.filter_by(status='pending').count()
-        except:
-            pending_count = 0
-            
-    return dict(pending_promotion_count=pending_count)
+    import json
+    # Pending promotions for the UI (notifications badge)
+    pending_count = PromotionRequest.query.filter_by(status='pending').count()
+    
+    # Check if the current user has a pending promotion request (Requirement: account itself able to see pending promotion)
+    my_id = session.get('user_id')
+    my_promotion = PromotionRequest.query.filter_by(target_user_id=my_id, status='pending').first()
+    
+    my_promotion_data = None
+    if my_promotion:
+        # Calculate how many have approved
+        approvals = json.loads(my_promotion.approvals)
+        # Total super admins needed
+        sa_count = User.query.filter_by(role='super_admin').count()
+        my_promotion_data = {
+            'role': my_promotion.target_role.replace('_', ' ').title(),
+            'approvals': len(approvals),
+            'total_needed': sa_count
+        }
+
+    # Team request counts for leaders
+    team_request_count = 0
+    my_user = User.query.get(my_id)
+    if my_user and my_user.team_id and my_user.team_role in ['leader', 'vice_leader']:
+        team_request_count = TeamRequest.query.filter_by(team_id=my_user.team_id, status='pending').count()
+
+    return dict(
+        pending_promotion_count=pending_count, 
+        my_promotion=my_promotion_data,
+        team_request_count=team_request_count,
+        my_team_id=my_user.team_id if my_user else None,
+        my_team_role=my_user.team_role if my_user else None
+    )
 
 @app.context_processor
 def inject_search_data():
@@ -535,6 +779,7 @@ def login():
                 session['user_name'] = user.name
                 session['user_pic'] = user.profile_picture
                 session['user_role'] = user.role or 'agent'
+                session['user_username'] = user.username
                 return redirect(url_for('dashboard'))
             else:
                 return render_template('login.html', error="Invalid credentials")
@@ -566,18 +811,33 @@ def admin_create_account():
         return render_template('404.html'), 404
 
     if request.method == 'POST':
-        # Only super_admin can create accounts
-        if current_user.role != 'super_admin':
-             return render_template('404.html'), 403
+        # Only super_admin or ultra_admin can create accounts
+        if current_user.role not in ['super_admin', 'ultra_admin']:
+             return render_template('403.html'), 403
+             
         username = request.form.get('username')
         password = request.form.get('password')
         name = request.form.get('name')
         bio = request.form.get('bio')
         role = request.form.get('role', 'agent')
         
+        # Prepare context variables for possible re-rendering
+        all_users = User.query.all()
+        all_teams = Team.query.all()
+        promotion_requests = []
+        total_super_admins = 0
+        if current_user.role in ['super_admin', 'ultra_admin']:
+            promotion_requests = PromotionRequest.query.filter_by(status='pending').all()
+            total_super_admins = User.query.filter_by(role='super_admin').count()
+
         # Check if username exists
         if User.query.filter_by(username=username).first():
-            return render_template('create_account.html', error="Username already exists")
+            return render_template('create_account.html', 
+                                   error="Username already exists",
+                                   users=all_users,
+                                   teams=all_teams,
+                                   promotion_requests=promotion_requests,
+                                   total_super_admins=total_super_admins)
 
         # Handle profile picture
         profile_pic_filename = None
@@ -603,27 +863,36 @@ def admin_create_account():
         db.session.commit()
         
         # Notification logic
-        # Creation is restricted to super_admin, so we notify super_admins
-        notify_roles = ['super_admin']
+        notify_roles = ['super_admin', 'ultra_admin']
         create_notification(
             'account', 
             'New Account Created', 
-            f"Super Admin {current_user.name} created a new account for {username} ({role}).", 
+            f"{current_user.role.replace('_', ' ').title()} {current_user.name} created a new account for {username} ({role}).", 
             target_roles=notify_roles
         )
         
-        return render_template('create_account.html', success=f"Account for {username} created successfully!", users=User.query.all())
+        return render_template('create_account.html', 
+                               success=f"Account for {username} created successfully!", 
+                               users=User.query.all(),
+                               teams=all_teams,
+                               promotion_requests=promotion_requests,
+                               total_super_admins=total_super_admins)
 
 
 
     # Fetch pending promotion requests for super_admins
     promotion_requests = []
     total_super_admins = 0
-    if current_user.role == 'super_admin':
+    if current_user.role in ['super_admin', 'ultra_admin']:
         promotion_requests = PromotionRequest.query.filter_by(status='pending').all()
         total_super_admins = User.query.filter_by(role='super_admin').count()
 
-    return render_template('create_account.html', users=User.query.all(), promotion_requests=promotion_requests, total_super_admins=total_super_admins)
+    return render_template('create_account.html', 
+                           users=User.query.all(), 
+                           teams=Team.query.all(),
+                           promotion_requests=promotion_requests, 
+                           total_super_admins=total_super_admins,
+                           me=current_user)
 
 @app.route('/admin/delete-account/<int:user_id>', methods=['POST'])
 def admin_delete_account(user_id):
@@ -631,35 +900,45 @@ def admin_delete_account(user_id):
         return jsonify({'error': 'Unauthorized'}), 401
     
     current_user = User.query.get(session.get('user_id'))
-    if current_user.role not in ['super_admin', 'admin']:
+    if current_user.role not in ['ultra_admin', 'super_admin', 'admin']:
         return jsonify({'error': 'Forbidden'}), 403
 
     user_to_delete = User.query.get_or_404(user_id)
     
-    # Prevent self-deletion
+    # Ultra Admin can delete their own account BUT only if they already transferred the role
     if user_to_delete.id == current_user.id:
-        return jsonify({'error': 'You cannot delete your own account'}), 400
+        if current_user.role == 'ultra_admin':
+            # Check if there is another ultra_admin (meaning they transferred the role)
+            # Actually, the logic should be: if role is ultra_admin and count is 1, they CANNOT delete.
+            ultra_admin_count = User.query.filter_by(role='ultra_admin').count()
+            if ultra_admin_count == 1:
+                return jsonify({'error': 'Ultra Admin must transfer role to another account before deleting their own account'}), 400
+        else:
+            return jsonify({'error': 'You cannot delete your own account'}), 400
     
-    # Prevent deletion of primary admin
-    if user_to_delete.username == '252499L':
+    # Prevent deletion of primary admin (if not ultra admin)
+    if user_to_delete.username == '252499L' and current_user.role != 'ultra_admin':
         return jsonify({'error': 'Primary admin account cannot be deleted'}), 400
 
     # Role-specific deletion rules
-    if current_user.role == 'super_admin':
-        # Super admin cannot delete other super admins
-        if user_to_delete.role == 'super_admin':
-            return jsonify({'error': 'Super Admins cannot delete other Super Admins'}), 403
+    if current_user.role == 'ultra_admin':
+        # Ultra Admin can delete ANYTHING except themselves (without transfer)
+        pass
+    elif current_user.role == 'super_admin':
+        # Super admin cannot delete other super admins or ultra admin
+        if user_to_delete.role in ['super_admin', 'ultra_admin']:
+            return jsonify({'error': 'Super Admins cannot delete other Super Admins or the Ultra Admin'}), 403
             
     elif current_user.role == 'admin':
-        # Admin can ONLY delete agents (cannot delete admins or super_admins)
-        if user_to_delete.role in ['super_admin', 'admin']:
-             return jsonify({'error': 'Admins cannot delete Super Admins or other Admins'}), 403
+        # Admin can ONLY delete agents (cannot delete admins, super_admins, ultra_admins)
+        if user_to_delete.role in ['super_admin', 'admin', 'ultra_admin']:
+             return jsonify({'error': 'Admins cannot delete Super Admins, Ultra Admins or other Admins'}), 403
 
     db.session.delete(user_to_delete)
     db.session.commit()
     
     # Notification logic
-    notify_roles = ['super_admin'] if current_user.role == 'super_admin' else ['super_admin', 'admin']
+    notify_roles = ['super_admin'] if current_user.role in ['super_admin', 'ultra_admin'] else ['super_admin', 'admin']
     create_notification(
         'account', 
         'Account Deleted', 
@@ -671,22 +950,32 @@ def admin_delete_account(user_id):
 
 @app.route('/api/admin/user/<int:user_id>')
 def api_admin_get_user(user_id):
-    if not session.get('logged_in') or session.get('user_role') not in ['super_admin', 'admin']:
+    if not session.get('logged_in'):
         return jsonify({'error': 'Unauthorized'}), 401
     
     user = User.query.get_or_404(user_id)
+    
+    # Calculate agent score
+    agent_score = calculate_agent_score(user.id)
+    
     return jsonify({
         'id': user.id,
         'username': user.username,
         'name': user.name,
         'role': user.role,
         'bio': user.bio,
-        'profile_picture': user.profile_picture
+        'profile_picture': user.profile_picture,
+        'team_id': user.team_id,
+        'team_role': user.team_role,
+        'team_name': user.team_obj.name if user.team_obj else None,
+        'team_pic': user.team_obj.profile_picture if user.team_obj else None,
+        'team_tag': user.team_obj.team_tag if user.team_obj else None,
+        'agent_score': agent_score
     })
 
 @app.route('/admin/edit-account/<int:user_id>', methods=['POST'])
 def admin_edit_account(user_id):
-    if not session.get('logged_in') or session.get('user_role') not in ['super_admin', 'admin']:
+    if not session.get('logged_in') or session.get('user_role') not in ['ultra_admin', 'super_admin', 'admin']:
         return redirect(url_for('login'))
     
     current_user_role = session.get('user_role')
@@ -708,12 +997,32 @@ def admin_edit_account(user_id):
     # Only Super Admin can change roles
     new_role = request.form.get('role')
     
-    if current_user_role == 'super_admin' and new_role and new_role != user.role:
+    if (current_user_role in ['super_admin', 'ultra_admin']) and new_role and new_role != user.role:
         # Check for Promotion Request logic
-        if new_role == 'super_admin' and user.role != 'super_admin':
-            # Check how many super admins exist
+        if new_role in ['super_admin', 'ultra_admin']:
+            # Promotions/Transfers need approval from ALL Super Admins
+            # (Ultra Admin also needs approval from Super Admins for a transfer)
+            
+            # Special check for Ultra Admin: only ONE allowed
+            if new_role == 'ultra_admin':
+                if current_user_role != 'ultra_admin':
+                    return "Forbidden: Only an Ultra Admin can promote someone else to Ultra Admin.", 403
+                
+                # Check for existing pending ultra_admin requests
+                existing_ultra_req = PromotionRequest.query.filter_by(target_role='ultra_admin', status='pending').first()
+                if existing_ultra_req:
+                    return render_template('create_account.html', 
+                                           error="A transfer of Ultra Admin role is already in progress.", 
+                                           users=User.query.all(),
+                                           teams=Team.query.all(),
+                                           promotion_requests=PromotionRequest.query.filter_by(status='pending').all())
+
+            # Get all super admins
             super_admins = User.query.filter_by(role='super_admin').all()
-            if len(super_admins) > 1:
+            
+            # If there are OTHER super admins, we need approval
+            # Note: Approvals are needed for ANY promotion to super_admin or ultra_admin
+            if len(super_admins) > 0:
                 # Need approval process
                 # Check if request already exists
                 existing_req = PromotionRequest.query.filter_by(target_user_id=user.id, status='pending').first()
@@ -722,37 +1031,42 @@ def admin_edit_account(user_id):
                     req = PromotionRequest(
                         target_user_id=user.id,
                         requester_id=session.get('user_id'),
+                        target_role=new_role,
                         status='pending',
                         approvals=json.dumps([session.get('user_id')]), # Using json dumps for list
                         created_at=datetime.now().strftime('%Y-%m-%d %H:%M')
                     )
                     db.session.add(req)
                     
-                    # Notify OTHER super admins
+                    # Notify ALL super admins
+                    notif_title = 'Ultra Admin Transfer' if new_role == 'ultra_admin' else 'Promotion - Approval Needed'
+                    notif_msg = f"Ultra Admin {session.get('user_name')} requested to transfer role to {user.name}." if new_role == 'ultra_admin' else f"{session.get('user_name')} requested to promote {user.name} to Super Admin."
+                    
                     create_notification(
                         'account', 
-                        'Promotion - Approval Needed', 
-                        f"Admin {session.get('user_name')} requested to promote {user.name} to Super Admin.", 
+                        notif_title, 
+                        notif_msg, 
                         target_roles=['super_admin']
                     )
                     
                     db.session.commit()
                     return render_template('create_account.html', 
-                                           info=f"Promotion request created for {user.name}. Waiting for approval from other Super Admins.", 
+                                           info=f"Promotion request created for {user.name}. Waiting for approval from Super Admins.", 
                                            users=User.query.all(),
+                                           teams=Team.query.all(),
                                            promotion_requests=PromotionRequest.query.filter_by(status='pending').all())
                 else:
                     return render_template('create_account.html', 
-                                           error=f"A promotion request for {user.name} is already pending.", 
+                                           error=f"A request for {user.name} is already pending.", 
                                            users=User.query.all(),
+                                           teams=Team.query.all(),
                                            promotion_requests=PromotionRequest.query.filter_by(status='pending').all())
             else:
-                 # Only 1 super admin (the current user), so just do it
                  changes_summary.append(f"role to {new_role}")
                  user.role = new_role
         else:
-            changes_summary.append(f"role to {new_role}")
-            user.role = new_role
+             changes_summary.append(f"role to {new_role}")
+             user.role = new_role
     
     user.bio = request.form.get('bio')
     
@@ -774,7 +1088,7 @@ def admin_edit_account(user_id):
     # Send Notification if there were changes
     # Note: We simply notify that an update occurred
     if True: # Notify on any edit save
-        notify_roles = ['super_admin'] if current_user_role == 'super_admin' else ['super_admin', 'admin']
+        notify_roles = ['super_admin'] if current_user_role in ['ultra_admin', 'super_admin'] else ['super_admin', 'admin']
         create_notification(
             'account',
             'Account Updated',
@@ -798,32 +1112,42 @@ def approve_promotion(req_id):
         approvals.append(current_uid)
         req.approvals = json.dumps(approvals)
         
-        # Check if we have unanimous approval from OTHER super admins
-        # Get all super admins
+        # Get all current super admins
         all_super_admins = User.query.filter_by(role='super_admin').all()
-        # We need ALL super admins to appear in the approvals list
-        
-        # The prompt says: "all other super admins must agree"
-        # Since the requester is a super admin and is implicitly in approvals (or we can add them manually),
-        # validation is: set(approvals) == set(all_super_admins_ids)
-        
         all_sa_ids = set([u.id for u in all_super_admins])
         approved_ids = set(approvals)
         
+        # Check if ALL current super admins have approved
         if all_sa_ids.issubset(approved_ids):
             # Promote!
             req.status = 'approved'
-            req.target_user.role = 'super_admin'
+            old_role = req.target_user.role
+            new_role = req.target_role or 'super_admin'
             
+            # If target role is ultra_admin, demote the current ultra_admin
+            if new_role == 'ultra_admin':
+                 current_ua = User.query.filter_by(role='ultra_admin').first()
+                 if current_ua:
+                     current_ua.role = 'super_admin'
+            
+            req.target_user.role = new_role
+            
+            # Notify everyone
             create_notification(
                 'account',
                 'Promotion Approved',
-                f"{req.target_user.name} has been promoted to Super Admin!",
+                f"{req.target_user.name} has been promoted to {new_role.replace('_', ' ').title()}!",
                 target_roles=['super_admin', 'admin']
             )
-        else:
-             # Just save the approval
-             pass
+            
+            # Nofity the account itself (Requirement: Account notified of promotion with congratulations)
+            create_notification(
+                'account',
+                '🎉 Congratulations!',
+                f"You have been successfully promoted to {new_role.replace('_', ' ').title()}! Check your new permissions.",
+                target_user_id=req.target_user.id,
+                icon='🎊'
+            )
         
         db.session.commit()
         return jsonify({'success': True, 'message': 'Approval recorded'})
@@ -892,13 +1216,19 @@ def profile():
         session['user_pic'] = user.profile_picture
         
         return redirect(url_for('profile'))
+    
+    # Calculate individual agent score
+    agent_score = calculate_agent_score(user.id)
         
-    return render_template('edit_profile.html', user=user)
+    return render_template('edit_profile.html', user=user, agent_score=agent_score)
 
 @app.before_request
 def require_login():
     allowed_routes = ['login', 'static']
     if request.endpoint and request.endpoint not in allowed_routes and not session.get('logged_in'):
+        # For API endpoints, return JSON error instead of redirect
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Unauthorized'}), 401
         return redirect(url_for('login'))
     
     if session.get('logged_in') and session.get('user_id'):
@@ -912,6 +1242,7 @@ def require_login():
                 pass
                 
             session['user_role'] = user.role
+            session['team_id'] = user.team_id
             session['user_name'] = user.name
             session['user_pic'] = user.profile_picture
 
@@ -1300,10 +1631,31 @@ def api_update_customer_notes(id):
 @app.route('/history')
 def history():
     view = request.args.get('view', 'active')  # active or archived
+    search_query = request.args.get('search', '').strip()
+    
+    # Base query
     if view == 'archived':
-        sessions = ChatSession.query.filter_by(archived=True).order_by(ChatSession.pinned.desc(), ChatSession.id.desc()).all()
+        base_query = ChatSession.query.filter_by(archived=True)
     else:
-        sessions = ChatSession.query.filter_by(archived=False).order_by(ChatSession.pinned.desc(), ChatSession.id.desc()).all()
+        base_query = ChatSession.query.filter_by(archived=False)
+    
+    # If search query exists, filter by message content or visitor name
+    if search_query:
+        # Find session IDs that have messages containing the search query
+        matching_message_sessions = db.session.query(ChatMessage.session_id).filter(
+            ChatMessage.text.ilike(f'%{search_query}%')
+        ).distinct().all()
+        matching_session_ids = [s[0] for s in matching_message_sessions]
+        
+        # Filter sessions by either visitor name OR session ID in matching messages
+        sessions = base_query.filter(
+            or_(
+                ChatSession.visitor_name.ilike(f'%{search_query}%'),
+                ChatSession.id.in_(matching_session_ids)
+            )
+        ).order_by(ChatSession.pinned.desc(), ChatSession.id.desc()).all()
+    else:
+        sessions = base_query.order_by(ChatSession.pinned.desc(), ChatSession.id.desc()).all()
     
     customers_list = Customer.query.all()
     inquiries_list = Inquiry.query.all()
@@ -1434,18 +1786,28 @@ def api_chat_sessions():
 def api_chat_messages(session_id):
     from flask import session as flask_session
     chat_session = ChatSession.query.get_or_404(session_id)
-    messages = [{
-        'id': m.id,
-        'sender_type': m.sender_type,
-        'sender_name': m.sender_name,
-        'text': m.text,
-        'timestamp': m.timestamp
-    } for m in chat_session.chat_messages]
+    messages = []
+    for m in chat_session.chat_messages:
+        pic = None
+        if m.sender_type == 'agent':
+            agent = User.query.filter_by(name=m.sender_name).first()
+            if agent:
+                pic = agent.profile_picture
+        
+        messages.append({
+            'id': m.id,
+            'sender_type': m.sender_type,
+            'sender_name': m.sender_name,
+            'text': m.text,
+            'timestamp': m.timestamp,
+            'pic': pic
+        })
     return jsonify({
         'session': {
             'id': chat_session.id,
             'visitor_name': chat_session.visitor_name,
             'visitor_email': chat_session.visitor_email,
+            'visitor_phone': f"+60 12-{ (session_id * 12345 % 900) + 100 } { (session_id * 6789) % 9000 + 1000 }",
             'status': chat_session.status,
             'linked_customer_id': chat_session.linked_customer_id,
             'linked_inquiry_id': chat_session.linked_inquiry_id,
@@ -1488,12 +1850,16 @@ def api_chat_send(session_id):
     chat_session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
     db.session.commit()
     
+    agent = User.query.get(flask_session.get('user_id'))
+    agent_pic = agent.profile_picture if agent else None
+
     return jsonify({'ok': True, 'message': {
         'id': new_msg.id,
         'sender_type': new_msg.sender_type,
         'sender_name': new_msg.sender_name,
         'text': new_msg.text,
-        'timestamp': new_msg.timestamp
+        'timestamp': new_msg.timestamp,
+        'pic': agent_pic
     }})
 
 @app.route('/api/chat/session/<int:session_id>/takeover', methods=['POST'])
@@ -1704,6 +2070,16 @@ def api_chat_link_inquiry(session_id):
     db.session.commit()
     return jsonify({'ok': True})
 
+@app.route('/api/inquiry/<int:inquiry_id>/unlink-chats', methods=['POST'])
+def api_inquiry_unlink_chats(inquiry_id):
+    inquiry = Inquiry.query.get_or_404(inquiry_id)
+    # Find all sessions linked to this inquiry
+    sessions = ChatSession.query.filter_by(linked_inquiry_id=inquiry.id).all()
+    for s in sessions:
+        s.linked_inquiry_id = None
+    db.session.commit()
+    return jsonify({'ok': True})
+
 @app.route('/api/chat/message/<int:message_id>/edit', methods=['POST'])
 def api_chat_edit_message(message_id):
     msg = ChatMessage.query.get_or_404(message_id)
@@ -1761,6 +2137,49 @@ def api_chat_pin(session_id):
     db.session.commit()
     return jsonify({'ok': True, 'pinned': session.pinned})
 
+@app.route('/my-team')
+def my_team():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    
+    user_id = session.get('user_id')
+    user = User.query.get(user_id)
+    
+    team = None
+    members = []
+    
+    all_teams = []
+    my_requests = []
+    
+    if user.team_id:
+        # Mark chat as read
+        user.last_active_team_chat = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        db.session.commit()
+
+        team = Team.query.get(user.team_id)
+        if team:
+            members = User.query.filter_by(team_id=team.id).all()
+            # Sort: leader=0, vice=1, others=2
+            members.sort(key=lambda x: 0 if x.team_role == 'leader' else (1 if x.team_role == 'vice_leader' else 2))
+        
+        # If leader or vice leader, fetch pending join requests
+        if user.team_role in ['leader', 'vice_leader']:
+             pending_join_requests = TeamRequest.query.filter_by(team_id=team.id, status='pending', type='join').all()
+        else:
+             pending_join_requests = []
+    else:
+        pending_join_requests = []
+        # Fetch available teams and user's requests
+        all_teams = Team.query.all()
+        # Create a set of requested team IDs for easy lookup in template
+        pending_reqs = TeamRequest.query.filter_by(user_id=user.id, status='pending').all()
+        my_requests = [r.team_id for r in pending_reqs]
+    
+    # Calculate team score if user has a team
+    calculated_team_score = calculate_team_score(team.id) if team else 0
+
+    return render_template('my_team.html', team=team, members=members, user=user, all_teams=all_teams, my_requests=my_requests, pending_join_requests=pending_join_requests, calculated_team_score=calculated_team_score)
+
 @app.route('/templates-manager')
 def templates_manager():
     return render_template('auto_reply_template_manager.html')
@@ -1780,6 +2199,8 @@ def lead_scoring():
 def inquiry_detail(id):
     inquiry = Inquiry.query.get_or_404(id)
     assigned_user = User.query.filter_by(username=inquiry.assigned_rep).first()
+    if not assigned_user and inquiry.assigned_rep:
+        assigned_user = User.query.filter_by(name=inquiry.assigned_rep).first()
     users = User.query.all()
     return render_template('inquiry_detail.html', inquiry=inquiry, users=users, assigned_user=assigned_user)
 
@@ -2109,13 +2530,17 @@ def get_inquiries():
                 user_display = inquiry.assigned_rep
 
         rep_pic = None
+        rep_id = None
+        
         if user:
             rep_pic = user.profile_picture
+            rep_id = user.id
         elif inquiry.assigned_rep:
             # Try to find user by name if username match failed (for old data)
             alt_user = User.query.filter_by(name=inquiry.assigned_rep).first()
             if alt_user:
                 rep_pic = alt_user.profile_picture
+                rep_id = alt_user.id
 
         data.append({
             'id': inquiry.id,
@@ -2125,7 +2550,7 @@ def get_inquiries():
             'status': inquiry.status,
             'assigned_rep': user_display,
             'rep_username': inquiry.assigned_rep,
-            'rep_id': user.id if user else None,
+            'rep_id': rep_id,
             'rep_pic': rep_pic,
             'created_at': inquiry.created_at,
             'created_by': inquiry.created_by,
@@ -2184,7 +2609,20 @@ def api_update_inquiry(id):
     inquiry.status = data.get('status', inquiry.status)
     inquiry.assigned_rep = data.get('assigned_rep', inquiry.assigned_rep)
     inquiry.description = data.get('description', inquiry.description)
-    inquiry.notes = data.get('notes', inquiry.notes)
+    
+    # Handle internal notes - if inquiry has a linked customer, update customer notes instead
+    if 'notes' in data:
+        if inquiry.customer_id:
+            # Update linked customer's notes
+            customer = Customer.query.get(inquiry.customer_id)
+            if customer:
+                customer.notes = data.get('notes')
+                customer.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
+                customer.updated_by = session.get('user_name', 'Admin')
+        else:
+            # No linked customer, update inquiry notes directly
+            inquiry.notes = data.get('notes', inquiry.notes)
+    
     inquiry.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
     inquiry.updated_by = session.get('user_name', 'Admin')
     db.session.commit()
@@ -2249,7 +2687,7 @@ def get_announcements():
 
 @app.route('/api/announcements', methods=['POST'])
 def create_announcement():
-    if session.get('user_role') not in ['super_admin', 'admin']:
+    if session.get('user_role') not in ['ultra_admin', 'super_admin', 'admin']:
         return jsonify({'error': 'Forbidden: Only admins can create announcements'}), 403
         
     data = request.get_json()
@@ -2274,7 +2712,7 @@ def create_announcement():
 
 @app.route('/api/announcements/<int:id>', methods=['PUT'])
 def update_announcement(id):
-    if session.get('user_role') not in ['super_admin', 'admin']:
+    if session.get('user_role') not in ['ultra_admin', 'super_admin', 'admin']:
         return jsonify({'error': 'Forbidden: Only admins can edit announcements'}), 403
 
     announcement = Announcement.query.get_or_404(id)
@@ -2295,7 +2733,7 @@ def update_announcement(id):
 
 @app.route('/api/announcements/<int:id>', methods=['DELETE'])
 def delete_announcement(id):
-    if session.get('user_role') not in ['super_admin', 'admin']:
+    if session.get('user_role') not in ['ultra_admin', 'super_admin', 'admin']:
         return jsonify({'error': 'Forbidden: Only admins can delete announcements'}), 403
 
     announcement = Announcement.query.get_or_404(id)
@@ -2312,7 +2750,542 @@ def announcement_to_dict(a):
         'createdAt': a.created_at
     }
 
-# --- 5. NOTIFICATIONS API ---
+# --- 5. TEAM MANAGEMENT API ---
+
+@app.route('/api/teams', methods=['GET'])
+def get_teams():
+    teams = Team.query.all()
+    result = []
+    for t in teams:
+        pic_url = t.profile_picture
+        if pic_url and not pic_url.startswith('http'):
+            pic_url = url_for('static', filename='uploads/' + pic_url)
+        elif not pic_url:
+            pic_url = f"https://ui-avatars.com/api/?name={t.name}&background=random"
+            
+        result.append({
+            'id': t.id,
+            'name': t.name,
+            'profile_picture': pic_url,
+            'description': t.description,
+            'role': t.role,
+            'department': t.department,
+            'team_score': t.team_score,
+            'team_tag': t.team_tag,
+            'member_count': len(t.members)
+        })
+    return jsonify({'teams': result})
+
+@app.route('/api/teams/create', methods=['POST'])
+def create_team():
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    current_user = User.query.get(session.get('user_id'))
+    if current_user.role not in ['ultra_admin', 'super_admin']:
+        return jsonify({'error': 'Only Super Admins and Ultra Admins can create teams.'}), 403
+        
+    leader_id = request.form.get('leader_id')
+    
+    if current_user.team_id and not leader_id:
+        return jsonify({'error': 'You are already in a team. You must assign another user as the leader for this new team.'}), 400
+        
+    # Handling form data for file upload
+    name = request.form.get('name')
+    if not name:
+        return jsonify({'error': 'Team name is required.'}), 400
+        
+    if Team.query.filter_by(name=name).first():
+        return jsonify({'error': 'A team with this name already exists.'}), 400
+        
+    new_team = Team(
+        name=name,
+        description=request.form.get('description', ''),
+        role=request.form.get('role', ''),
+        department=request.form.get('department', ''),
+        team_tag=request.form.get('team_tag', ''),
+        created_at=datetime.now().strftime('%Y-%m-%d %H:%M')
+    )
+    
+    # Handle Profile Picture Upload
+    if 'profile_picture' in request.files:
+        file = request.files['profile_picture']
+        if file and file.filename != '':
+            import os
+            from werkzeug.utils import secure_filename
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            filename = f"team_{timestamp}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            new_team.profile_picture = filename
+
+    db.session.add(new_team)
+    db.session.flush() # Get the ID
+    
+    # Assignment of leadership
+    if leader_id:
+        target_leader = User.query.get(leader_id)
+        if target_leader:
+            if target_leader.team_id:
+                return jsonify({'error': f'User {target_leader.name} is already in a team and cannot be assigned as the leader.'}), 400
+            target_leader.team_id = new_team.id
+            target_leader.team_role = 'leader'
+    else:
+        # Creator becomes leader
+        current_user.team_id = new_team.id
+        current_user.team_role = 'leader'
+    
+    db.session.commit()
+    
+    create_notification(
+        'account',
+        'New Team Created',
+        f'Team {new_team.name} has been created by {current_user.username}.',
+        target_roles=['super_admin', 'admin']
+    )
+    
+    return jsonify({'success': True, 'team_id': new_team.id})
+
+@app.route('/api/teams/request-action', methods=['POST'])
+def team_request_action():
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    data = request.get_json()
+    action_type = data.get('type') # join, move, invite
+    target_user_id = int(data.get('user_id'))
+    target_team_id = data.get('team_id')
+    if target_team_id and target_team_id != 'none':
+        target_team_id = int(target_team_id)
+    
+    current_user = User.query.get(session.get('user_id'))
+    target_user = User.query.get(target_user_id)
+    
+    # Handle removal (no team)
+    if not target_team_id or str(target_team_id).lower() == 'none':
+        if current_user.role == 'ultra_admin' or (current_user.role == 'super_admin' and target_user.role in ['admin', 'agent']) or (current_user.role == 'admin' and target_user.id == current_user.id):
+             target_user.team_id = None
+             target_user.team_role = None
+             db.session.commit()
+             return jsonify({'success': True, 'message': 'User removed from team.'})
+        return jsonify({'error': 'Permission denied for team removal.'}), 403
+
+    target_team = Team.query.get(target_team_id)
+    if not target_team:
+        return jsonify({'error': 'Target team not found.'}), 404
+
+    # NEW: Safety check for Leaders
+    # If the TARGET user is currently a leader of their team, they must have someone else ready to lead.
+    if target_user.team_id and target_user.team_role == 'leader' and target_user.team_id != target_team_id:
+        other_members = User.query.filter(User.team_id == target_user.team_id, User.id != target_user.id).all()
+        if other_members:
+            other_leader = User.query.filter(User.team_id == target_user.team_id, User.id != target_user.id, User.team_role == 'leader').first()
+            if not other_leader:
+                 return jsonify({'error': f'User {target_user.username} is the only leader of their team. Please promote another member to leader before moving them.'}), 400
+
+    # Permission Checks
+    can_perform = False
+    needs_approval = True
+    
+    if action_type == 'join':
+        # Agents can request to join
+        if current_user.role == 'agent' or current_user.role == 'admin':
+            can_perform = True
+        # Super Admins joining themselves requires leader permission
+        elif current_user.role == 'super_admin' and target_user_id == current_user.id:
+            can_perform = True
+        # Ultra Admin joining themselves require no permission
+        elif current_user.role == 'ultra_admin' and target_user_id == current_user.id:
+            can_perform = True
+            needs_approval = False
+            
+    elif action_type == 'move':
+        # Ultra Admins can move anyone
+        if current_user.role == 'ultra_admin':
+            can_perform = True
+            needs_approval = False
+        # Super Admins can move admins or agents
+        elif current_user.role == 'super_admin' and target_user.role in ['admin', 'agent']:
+            can_perform = True
+            needs_approval = False
+        # Admins can request to move any agent
+        elif current_user.role == 'admin' and target_user.role == 'agent':
+            can_perform = True
+            
+    elif action_type == 'invite':
+        # Leaders and Vice Leaders can invite
+        if current_user.team_id == target_team_id and current_user.team_role in ['leader', 'vice_leader']:
+            can_perform = True
+
+    if not can_perform:
+        return jsonify({'error': 'Forbidden: You do not have permission for this action.'}), 403
+
+    if not needs_approval:
+        target_user.team_id = target_team_id
+        target_user.team_role = 'member'
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Action completed successfully.'})
+    
+    # Create request
+    new_req = TeamRequest(
+        user_id=target_user_id,
+        team_id=target_team_id,
+        requester_id=current_user.id,
+        type=action_type,
+        created_at=datetime.now().strftime('%Y-%m-%d %H:%M')
+    )
+    db.session.add(new_req)
+    db.session.commit()
+    
+    # Notify team leader
+    leaders = User.query.filter_by(team_id=target_team_id, team_role='leader').all()
+    for leader in leaders:
+        create_notification(
+            'account',
+            'Team Request',
+            f'{current_user.username} requested {action_type} for {target_user.username}.',
+            target_user_id=leader.id
+        )
+        
+    return jsonify({'success': True, 'message': 'Request sent successfully.'})
+
+@app.route('/api/teams/handle-request', methods=['POST'])
+def handle_team_request():
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    data = request.get_json()
+    req_id = data.get('request_id')
+    # JS sends 'action' (approve/reject), DB/logic expects 'status' (approved/rejected)
+    action = data.get('action') 
+    
+    if action == 'approve':
+        status = 'approved'
+    elif action == 'reject':
+        status = 'rejected'
+    else:
+        status = data.get('status') # Fallback
+    
+    if not status:
+         return jsonify({'error': 'Missing action or status'}), 400
+
+    req = TeamRequest.query.get_or_404(req_id)
+    current_user = User.query.get(session.get('user_id'))
+    
+    # Only team leader can approve/reject
+    if current_user.team_id != req.team_id or current_user.team_role != 'leader':
+        return jsonify({'error': 'Forbidden: Only the team leader can handle requests.'}), 403
+        
+    req.status = status
+    if status == 'approved':
+        # Add user to the team
+        target_user = User.query.get(req.user_id)
+        target_user.team_id = req.team_id
+        target_user.team_role = 'member'
+        
+        # Remove any other pending requests from this user? or just this one is done.
+        
+    db.session.commit()
+    
+    # Notify requester and user
+    try:
+        create_notification(
+            'account',
+            f'Team Request {status.title()}',
+            f'Request for {req.target_user.username} to join {req.target_team.name} was {status}.',
+            target_user_id=req.requester_id
+        )
+    except Exception as e:
+        print(f"Notification error: {e}")
+    
+    return jsonify({'success': True})
+
+@app.route('/api/teams/leave', methods=['POST'])
+def leave_team():
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    current_user = User.query.get(session.get('user_id'))
+    if not current_user.team_id:
+        return jsonify({'error': 'You are not in a team.'}), 400
+        
+    # If the user is the ONLY leader, they might need to assign another one or team must have at least one leader.
+    # The prompt says: "A team MUST have atleast one leader."
+    if current_user.team_role == 'leader':
+        other_leader = User.query.filter(User.team_id == current_user.team_id, User.id != current_user.id, User.team_role == 'leader').first()
+        if not other_leader:
+             # Check if there's a vice-leader who can take over
+             vice = User.query.filter_by(team_id=current_user.team_id, team_role='vice_leader').first()
+             if vice:
+                 vice.team_role = 'leader'
+             else:
+                 others = User.query.filter(User.team_id == current_user.team_id, User.id != current_user.id).all()
+                 if others:
+                     return jsonify({'error': 'You are the only leader of this team. Please promote someone else or transfer leadership before leaving.'}), 400
+
+    current_user.team_id = None
+    current_user.team_role = None
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/teams/kick', methods=['POST'])
+def kick_member():
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    data = request.get_json()
+    username = data.get('username')
+    
+    current_user = User.query.get(session.get('user_id'))
+    target_user = User.query.filter_by(username=username).first_or_404()
+    
+    if current_user.team_id != target_user.team_id:
+        return jsonify({'error': 'User is not in your team.'}), 400
+        
+    # Leaders and Admins can kick
+    is_leader = current_user.team_id == target_user.team_id and current_user.team_role == 'leader'
+    is_admin = current_user.role in ['ultra_admin', 'super_admin']
+    
+    if not is_leader and not is_admin:
+        return jsonify({'error': 'Only leaders or admins can kick members.'}), 403
+        
+    # Leaders can only kick agents
+    if is_leader and not is_admin and target_user.role != 'agent':
+        return jsonify({'error': 'Leaders can only kick agents.'}), 403
+
+    target_user.team_id = None
+    target_user.team_role = None
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/teams/my-requests', methods=['GET'])
+def get_my_team_requests():
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    current_user = User.query.get(session.get('user_id'))
+    if not current_user.team_id or current_user.team_role not in ['leader', 'vice_leader']:
+        return jsonify({'requests': []})
+        
+    requests = TeamRequest.query.filter_by(team_id=current_user.team_id, status='pending').all()
+    result = []
+    for r in requests:
+        result.append({
+            'id': r.id,
+            'user_id': r.user_id,
+            'user_name': r.target_user.username if r.target_user else 'Unknown',
+            'type': r.type,
+            'created_at': r.created_at
+        })
+    return jsonify({'requests': result})
+
+@app.route('/api/teams/<int:team_id>/details', methods=['GET'])
+def get_team_details(team_id):
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    team = Team.query.get_or_404(team_id)
+    members = User.query.filter_by(team_id=team.id).all()
+    
+    member_list = []
+    for m in members:
+        member_list.append({
+            'id': m.id,
+            'name': m.name,
+            'username': m.username,
+            'role': m.role, # system role
+            'team_role': m.team_role or 'member',
+            'pic': m.profile_picture
+        })
+        
+    pic_url = team.profile_picture
+
+    return jsonify({
+        'team': {
+            'id': team.id,
+            'name': team.name,
+            'profile_picture': pic_url,
+            'description': team.description,
+            'role': team.role,
+            'department': team.department,
+            'team_score': calculate_team_score(team.id),
+            'team_tag': team.team_tag
+        },
+        'members': member_list
+    })
+
+@app.route('/api/teams/<int:team_id>/delete', methods=['POST'])
+def delete_team(team_id):
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    current_user = User.query.get(session.get('user_id'))
+    team = Team.query.get_or_404(team_id)
+    
+    # Permission: Ultra/Super Admin OR Team Leader
+    is_admin = current_user.role in ['ultra_admin', 'super_admin']
+    is_leader = current_user.team_id == team.id and current_user.team_role == 'leader'
+    
+    if not is_admin and not is_leader:
+        return jsonify({'error': 'Forbidden: Only admins or team leaders can delete this team.'}), 403
+        
+    # Unassign all members
+    User.query.filter_by(team_id=team.id).update({'team_id': None, 'team_role': None})
+    
+    # Delete requests
+    TeamRequest.query.filter_by(team_id=team.id).delete()
+    
+    db.session.delete(team)
+    db.session.commit()
+    
+    return jsonify({'success': True})
+
+@app.route('/api/teams/<int:team_id>/update', methods=['POST'])
+def update_team(team_id):
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    current_user = User.query.get(session.get('user_id'))
+    team = Team.query.get_or_404(team_id)
+    
+    if not (current_user.role in ['ultra_admin', 'super_admin'] or (current_user.team_id == team.id and current_user.team_role == 'leader')):
+        return jsonify({'error': 'Forbidden'}), 403
+        
+    team.name = request.form.get('name', team.name)
+    team.description = request.form.get('description', team.description)
+    team.role = request.form.get('role', team.role)
+    team.department = request.form.get('department', team.department)
+    team.team_tag = request.form.get('team_tag', team.team_tag)
+    # Team score is now calculated automatically, not manually edited
+    
+    # Handle Profile Picture Upload
+    if 'profile_picture' in request.files:
+        file = request.files['profile_picture']
+        if file and file.filename != '':
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            filename = f"team_{timestamp}_{filename}"
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            team.profile_picture = filename
+        
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/api/teams/member-action', methods=['POST'])
+def team_member_action():
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    data = request.get_json()
+    action = data.get('action') # promote_vice, transfer_leader, demote
+    target_username = data.get('username')
+    
+    current_user = User.query.get(session.get('user_id'))
+    target_user = User.query.filter_by(username=target_username).first_or_404()
+    
+    if current_user.team_id != target_user.team_id and current_user.role not in ['ultra_admin', 'super_admin']:
+        return jsonify({'error': 'User is not in your team.'}), 400
+        
+    # Strictly enforce LEADER role if not an admin.
+    if current_user.team_role != 'leader' and current_user.role not in ['ultra_admin', 'super_admin']:
+        return jsonify({'error': 'Forbidden: Only leaders can perform this action.'}), 403
+
+    if action == 'promote_vice':
+        if target_user.team_role == 'leader':
+             return jsonify({'error': 'Cannot demote the team leader directly. Please transfer leadership to another member first.'}), 400
+        target_user.team_role = 'vice_leader'
+    elif action == 'demote':
+        if target_user.team_role == 'leader':
+             return jsonify({'error': 'Cannot demote the team leader directly. Please transfer leadership to another member first.'}), 400
+        target_user.team_role = 'member'
+    elif action == 'transfer_leader': 
+        # Logic for performing transfer
+        # 1. Find the current leader(s)
+        current_leader = User.query.filter_by(team_id=target_user.team_id, team_role='leader').first()
+        
+        if current_leader:
+            current_leader.team_role = 'vice_leader'
+        
+        target_user.team_role = 'leader'
+        
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+ # --- 6. NOTIFICATIONS API ---
+
+@app.route('/api/teams/<int:team_id>/chat', methods=['GET', 'POST'])
+def api_team_chat(team_id):
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    user_id = session.get('user_id')
+    user = User.query.get(user_id)
+    
+    # Must be in team or super/ultra admin
+    if user.team_id != team_id and user.role not in ['ultra_admin', 'super_admin']:
+         return jsonify({'error': 'Forbidden'}), 403
+
+    if request.method == 'GET':
+        since_id = request.args.get('since', 0, type=int)
+        
+        query = TeamMessage.query.filter_by(team_id=team_id)
+        if since_id > 0:
+            query = query.filter(TeamMessage.id > since_id)
+        
+        # If fetching initial history (since=0), limit to last 50
+        if since_id == 0:
+            total = query.count()
+            if total > 50:
+                # We need to slice the query. SQLAlchemy slice/offset
+                # Wait, simpler: order by desc limit 50 then reverse?
+                # Or just fetch all if not too many. Let's do fetch all but verify count.
+                # If > 50, fetch latest 50.
+                pass 
+                # Actually, simpler logic:
+                # If since_id is 0, we want the most recent messages.
+                # query.order_by(TeamMessage.created_at.desc()).limit(50) -> reverse
+                # But IDs are sequential usually.
+        
+        # Implementing simple logic: if since_id > 0, get ones > since_id.
+        # If since_id == 0, get ALL (or last 100). Let's do ALL for now, simpler.
+        messages = query.all()
+        
+        result = []
+        for m in messages:
+            # Need user link. The model has backref 'user'.
+            result.append({
+                'id': m.id,
+                'user_id': m.user_id,
+                'name': m.user.name if m.user else 'Unknown',
+                'pic': m.user.profile_picture if m.user else None,
+                'message': m.message,
+                'created_at': m.created_at
+            })
+        
+        return jsonify({'messages': result})
+    
+    else: # POST
+        data = request.get_json()
+        text = data.get('message')
+        if not text:
+            return jsonify({'error': 'Empty message'}), 400
+            
+        from datetime import datetime
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        msg = TeamMessage(
+            team_id=team_id,
+            user_id=user_id,
+            message=text,
+            created_at=current_time
+        )
+        db.session.add(msg)
+        db.session.commit()
+        return jsonify({'success': True, 'id': msg.id})
+
+
 
 @app.route('/api/notifications')
 def get_notifications():
@@ -2403,6 +3376,75 @@ def handle_preferences():
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template('404.html'), 404
+
+# --- GLOBAL SEARCH API ---
+@app.route('/api/global-search')
+def global_search():
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify([])
+
+    results = []
+
+    # 1. Teams (Team Name)
+    teams = Team.query.filter(Team.name.ilike(f'%{query}%')).limit(3).all()
+    for t in teams:
+        results.append({
+            'category': 'Team',
+            'display': t.name,
+            'url': '/admin/create-account' # Teams are also managed here
+        })
+
+    # 3. Chats (Visitor Name)
+    chats = ChatSession.query.filter(ChatSession.visitor_name.ilike(f'%{query}%')).limit(3).all()
+    for c in chats:
+        results.append({
+            'category': 'Chat',
+            'display': f"{c.visitor_name} (#{c.id})",
+            'url': f"/history?session={c.id}"
+        })
+
+    # 4. Announcements (Title or Content)
+    anns = Announcement.query.filter(
+        or_(Announcement.title.ilike(f'%{query}%'), Announcement.content.ilike(f'%{query}%'))
+    ).limit(3).all()
+    for a in anns:
+        results.append({
+            'category': 'Announcement',
+            'display': a.title,
+            'url': '/dashboard' # Announcements are on the dashboard
+        })
+    
+    # 5. Customers (Name or Email) - Added for completeness as the UI says "Search leads, rules, or customers..."
+    customers = Customer.query.filter(
+         or_(Customer.name.ilike(f'%{query}%'), Customer.email.ilike(f'%{query}%'))
+    ).limit(3).all()
+    for c in customers:
+        results.append({
+            'category': 'Customer',
+            'display': c.name,
+            'url': f"/customer/{c.id}"
+        })
+
+    # 6. Inquiries (ID, Customer, Type, Description)
+    inq_filters = [
+        Inquiry.customer.ilike(f'%{query}%'),
+        Inquiry.inquiry_type.ilike(f'%{query}%'),
+        Inquiry.description.ilike(f'%{query}%')
+    ]
+    # Check if query is numeric for ID search
+    if query.isdigit():
+        inq_filters.append(Inquiry.id == int(query))
+        
+    inquiries = Inquiry.query.filter(or_(*inq_filters)).limit(3).all()
+    for i in inquiries:
+        results.append({
+            'category': 'Inquiry',
+            'display': f"#{i.id} - {i.customer} ({i.inquiry_type})",
+            'url': f"/inquiry/{i.id}"
+        })
+
+    return jsonify(results)
 
 # --- START SERVER (This must always be at the very bottom!) ---
 if __name__ == '__main__':

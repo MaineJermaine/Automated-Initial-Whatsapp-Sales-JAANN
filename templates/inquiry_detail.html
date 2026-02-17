@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <title>Inquiry Detail - CRM</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
         .chat-container {
@@ -35,11 +36,22 @@
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/my-team" class="nav-link nav-my-team d-flex justify-content-between align-items-center">
+            My Team
+            <div class="d-flex align-items-center gap-1">
+                {% if unread_team_messages %}
+                <span class="rounded-circle bg-warning" style="width: 10px; height: 10px; display: inline-block;"></span>
+                {% endif %}
+                {% if team_pending_requests_count and team_pending_requests_count > 0 %}
+                <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+                {% endif %}
+            </div>
+        </a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
         <a href="/history" class="nav-link nav-history">Chat History</a>
         <a href="/repository" class="nav-link nav-repository active">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
-        {% if session.get('user_role') in ['super_admin', 'admin'] %}
+        {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
         <a href="/admin/create-account" class="nav-link nav-admin">
             Manage Accounts
             {% if pending_promotion_count and pending_promotion_count > 0 %}
@@ -86,7 +98,11 @@
             <div class="d-flex gap-2 align-items-center">
                 <span class="badge bg-primary fs-6">{{ inquiry.status }}</span>
                 <button class="btn btn-sm btn-outline-secondary" onclick="openEditInquiryModal()">✏️ Edit</button>
+                {% if inquiry.chat_sessions %}
+                <button class="btn btn-sm btn-outline-danger" onclick="unlinkAllChats()">🔗 Unlink from Chat</button>
+                {% else %}
                 <button class="btn btn-sm btn-blue" onclick="openLinkChatModal()">💬 Link to Chat</button>
+                {% endif %}
             </div>
         </div>
 
@@ -97,7 +113,10 @@
                     <p><strong>Type:</strong> {{ inquiry.inquiry_type }}</p>
                     <p><strong>Assigned Rep:</strong>
                         {% if assigned_user %}
-                        {{ assigned_user.name }} @{{ assigned_user.username }}
+                        <span style="cursor:pointer; color:var(--blue); font-weight:bold;"
+                            onclick="showAgentProfile('{{ assigned_user.id }}')">
+                            {{ assigned_user.name }} @{{ assigned_user.username }}
+                        </span>
                         {% else %}
                         {{ inquiry.assigned_rep or 'Unassigned' }}
                         {% endif %}
@@ -173,11 +192,14 @@
                         <label class="form-label fw-bold small">Description</label>
                         <textarea id="editDescription" class="form-control" rows="3"></textarea>
                     </div>
+                    {% if inquiry.customer_id %}
                     <div class="mb-3">
-                        <label class="form-label fw-bold small">Notes</label>
+                        <label class="form-label fw-bold small">Internal Notes (Customer Notes)</label>
                         <textarea id="editNotes" class="form-control" rows="2"
-                            placeholder="Internal notes..."></textarea>
+                            placeholder="These notes will be saved to the linked customer's profile..."></textarea>
+                        <small class="text-muted">These notes are linked to the customer profile and will be visible in Customer Details.</small>
                     </div>
+                    {% endif %}
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button class="btn btn-gray" data-bs-dismiss="modal">Cancel</button>
@@ -197,7 +219,11 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted">Select a chat conversation to link this inquiry to.</p>
-                    <select class="form-select" id="chatSessionSelect">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search"></i></span>
+                        <input type="text" id="chatSearchInput" class="form-control border-start-0" placeholder="Search by name, email or status..." oninput="filterChatSessions()">
+                    </div>
+                    <select class="form-select" id="chatSessionSelect" size="8">
                         <option value="">-- Select a chat --</option>
                     </select>
                     <div id="chatLoadingMsg" class="text-muted small mt-2">Loading chats...</div>
@@ -213,31 +239,59 @@
     <script>
         const inquiryId = "{{ inquiry.id }}";
         let chatSessions = [];
+        let linkChatModalInstance = null;
+
+        function alertUser(msg, type = 'blue') {
+            const toast = document.getElementById("siteToast");
+            if (typeof showToast === 'function' && toast) {
+                showToast(msg, type === 'success' ? 'green' : (type === 'error' ? 'red' : 'blue'));
+            } else {
+                alert(msg);
+            }
+        }
 
         async function openLinkChatModal() {
-            const modal = new bootstrap.Modal(document.getElementById('linkChatModal'));
-            modal.show();
+            const modalEl = document.getElementById('linkChatModal');
+            linkChatModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+            linkChatModalInstance.show();
+
+            // Clear search
+            document.getElementById('chatSearchInput').value = '';
 
             // Fetch chat sessions
             const res = await fetch('/api/chat/sessions');
             chatSessions = await res.json();
 
+            renderChatOptions();
+        }
+
+        function renderChatOptions(filter = '') {
             const select = document.getElementById('chatSessionSelect');
             const loadingMsg = document.getElementById('chatLoadingMsg');
+            const query = filter.toLowerCase();
 
             select.innerHTML = '<option value="">-- Select a chat --</option>';
+            
             chatSessions.forEach(s => {
-                const opt = document.createElement('option');
-                opt.value = s.id;
-                opt.textContent = `${s.visitor_name} (${s.visitor_email}) - ${s.status}`;
-                if (s.linked_inquiry_id == inquiryId) {
-                    opt.textContent += ' ✓ Already linked';
-                    opt.selected = true;
+                const text = `${s.visitor_name} (${s.visitor_email}) - ${s.status}`;
+                if (!filter || text.toLowerCase().includes(query)) {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = text;
+                    if (s.linked_inquiry_id == inquiryId) {
+                        opt.textContent += ' ✓ Already linked';
+                        opt.selected = true;
+                    }
+                    select.appendChild(opt);
                 }
-                select.appendChild(opt);
             });
 
-            loadingMsg.style.display = 'none';
+            if (loadingMsg) loadingMsg.style.display = 'none';
+        }
+
+        function filterChatSessions() {
+            const input = document.getElementById('chatSearchInput');
+            renderChatOptions(input.value);
         }
 
         async function linkToChat() {
@@ -245,18 +299,65 @@
             const sessionId = select.value;
 
             if (!sessionId) {
-                alert('Please select a chat session.');
+                alertUser('Please select a chat session.', 'error');
                 return;
             }
 
-            await fetch(`/api/chat/session/${sessionId}/link-inquiry`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ inquiry_id: inquiryId })
-            });
+            try {
+                const res = await fetch(`/api/chat/session/${sessionId}/link-inquiry`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ inquiry_id: inquiryId })
+                });
 
-            alert('Inquiry linked to chat successfully!');
-            bootstrap.Modal.getInstance(document.getElementById('linkChatModal')).hide();
+                if (res.ok) {
+                    alertUser('Inquiry linked to chat successfully!', 'success');
+                    const modalEl = document.getElementById('linkChatModal');
+                    const modalInst = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    modalInst.hide();
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    const data = await res.json();
+                    alertUser(data.error || 'Failed to link inquiry', 'error');
+                }
+            } catch (err) {
+                alertUser('Error linking chat: ' + err, 'error');
+            }
+        }
+
+        function unlinkAllChats() {
+            const overlay = document.getElementById('confirmOverlay');
+            overlay.style.display = 'flex';
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-card">
+                    <h3>🔗 Unlink Chat</h3>
+                    <p>Are you sure you want to unlink all chat sessions from this inquiry?</p>
+                    <div class="btn-group">
+                        <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
+                        <button class="btn btn-sm" style="background:#dc2626;color:white;" onclick="executeUnlinkChats()">Unlink</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function executeUnlinkChats() {
+            document.getElementById('confirmOverlay').style.display = 'none';
+            try {
+                const res = await fetch(`/api/inquiry/${inquiryId}/unlink-chats`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (res.ok) {
+                    alertUser('Chats unlinked successfully!', 'success');
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    alertUser('Failed to unlink chats.', 'error');
+                }
+            } catch (err) {
+                alertUser('Error unlinking chats: ' + err, 'error');
+            }
         }
     </script>
 
@@ -266,7 +367,14 @@
             document.getElementById('editStatus').value = "{{ inquiry.status }}";
             document.getElementById('editRep').value = "{{ inquiry.assigned_rep or '' }}";
             document.getElementById('editDescription').value = `{{ inquiry.description or '' }}`;
-            document.getElementById('editNotes').value = `{{ inquiry.notes or '' }}`;
+            
+            // Pre-fill notes - if inquiry has linked customer, use customer notes
+            {% if inquiry.customer_id and inquiry.linked_customer %}
+            const notesField = document.getElementById('editNotes');
+            if (notesField) {
+                notesField.value = `{{ inquiry.linked_customer.notes or '' }}`;
+            }
+            {% endif %}
 
             new bootstrap.Modal(document.getElementById('editInquiryModal')).show();
         }
@@ -287,13 +395,14 @@
                 });
 
                 if (res.ok) {
-                    window.location.reload();
+                    alertUser('Inquiry updated successfully', 'success');
+                    setTimeout(() => window.location.reload(), 800);
                 } else {
-                    alert("Failed to update inquiry.");
+                    alertUser("Failed to update inquiry.", 'error');
                 }
             } catch (e) {
                 console.error(e);
-                alert("Error saving inquiry.");
+                alertUser("Error saving inquiry.", 'error');
             }
         }
     </script>
@@ -323,6 +432,23 @@
         setInterval(loadMessages, 3000);
         window.onload = loadMessages;
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+
+    <!-- showTeamDetails function is now standardized and available from app.js -->
+
+    <!-- Team Details Modal is now standardized and injected by app.js -->
+    <!-- Confirm Overlay -->
+    <div id="confirmOverlay" style="display:none;"></div>
+
+    <!-- Toast System -->
+    <div id="siteToast" class="site-toast hidden">
+        <div class="toast-content">
+            <span id="toastMessage"></span>
+            <button class="toast-close" onclick="hideToast()">x</button>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
