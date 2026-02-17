@@ -15,8 +15,24 @@
         <h2>CRM Admin</h2>
         <a href="/dashboard" class="nav-link nav-dashboard">Dashboard</a>
         <a href="/customers" class="nav-link nav-customers">Customer List</a>
+        <a href="/my-team" class="nav-link nav-my-team d-flex justify-content-between align-items-center">
+            My Team
+            <div class="d-flex align-items-center gap-1">
+                {% if unread_team_messages %}
+                <span class="rounded-circle bg-warning" style="width: 10px; height: 10px; display: inline-block;"></span>
+                {% endif %}
+                {% if team_pending_requests_count and team_pending_requests_count > 0 %}
+                <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+                {% endif %}
+            </div>
+        </a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
-        <a href="/history" class="nav-link nav-history">Chat History</a>
+        <a href="/history" class="nav-link nav-history d-flex justify-content-between align-items-center">
+            Chat History
+            {% if transfer_request_count and transfer_request_count > 0 %}
+            <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+            {% endif %}
+        </a>
         <a href="/repository" class="nav-link nav-repository active">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
         {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}

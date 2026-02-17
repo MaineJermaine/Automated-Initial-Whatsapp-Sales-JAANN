@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat History - Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
@@ -793,12 +794,12 @@
 
 <script>
     // Global User Context for Standardized Modals
-    window.currUserId = {{ session.get('user_id', 0) }};
-    window.currUserRole = "{{ session.get('user_role', 'agent') }}";
-    window.currUsername = "{{ session.get('user_username', '') }}";
+    window.currUserId = {{ (session.get('user_id', 0) or 0) | tojson }};
+    window.currUserRole = {{ (session.get('user_role', 'agent')) | tojson }};
+    window.currUsername = {{ (session.get('user_username', '')) | tojson }};
 
-    window.backendSearchSeed = {{ search_seed | tojson if search_seed is defined else 'null' }};
-    window.ruleKeywords = {{ rule_keywords | tojson if rule_keywords is defined else '[]' }};
+    window.backendSearchSeed = {{ search_seed | tojson if search_seed is not undefined else '[]' }};
+    window.ruleKeywords = {{ rule_keywords | tojson if rule_keywords is not undefined else '[]' }};
 </script>
 
 <body id="page-history" class="{% if current_theme and current_theme != 'light' %}theme-{{ current_theme }}{% endif %}">
@@ -818,7 +819,12 @@
             </div>
         </a>
         <a href="/templates-manager" class="nav-link nav-templates">Template Manager</a>
-        <a href="/history" class="nav-link nav-history active">Chat History</a>
+        <a href="/history" class="nav-link nav-history active d-flex justify-content-between align-items-center">
+            Chat History
+            {% if transfer_request_count and transfer_request_count > 0 %}
+            <i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 0.9em;"></i>
+            {% endif %}
+        </a>
         <a href="/repository" class="nav-link nav-repository">Inquiry Repository</a>
         <a href="/scoring" class="nav-link nav-scoring">Lead Scoring</a>
         {% if session.get('user_role') in ['ultra_admin', 'super_admin', 'admin'] %}
@@ -876,27 +882,27 @@
                     <!-- Active / Archived toggle -->
                     <div class="chat-view-tabs">
                         <button class="chat-view-tab {% if current_view == 'active' %}active{% endif %}"
-                            onclick="switchView('active')">💬 Active</button>
+                            onclick="switchView('active')">Ongoing</button>
                         <button class="chat-view-tab {% if current_view == 'archived' %}active{% endif %}"
-                            onclick="switchView('archived')">📦 Archived</button>
+                            onclick="switchView('archived')">Archived</button>
                     </div>
 
                     <!-- Search -->
                     <div class="chat-list-search">
-                        <input type="text" id="chatSearchInput" placeholder="Search conversations..."
+                        <input type="text" id="chatSearchInput" placeholder="Search visitors or content..."
                             oninput="filterChatList()">
                     </div>
 
                     <!-- Sort -->
                     <div class="chat-sort-bar">
                         <select id="chatSortSelect" onchange="sortChatList()">
-                            <option value="default">📌 Pinned First</option>
-                            <option value="newest">🕐 Newest First</option>
-                            <option value="oldest">🕐 Oldest First</option>
-                            <option value="name-az">🔤 Name A-Z</option>
-                            <option value="name-za">🔤 Name Z-A</option>
-                            <option value="score-high">🚀 Highest Score First</option>
-                            <option value="score-low">📉 Lowest Score First</option>
+                            <option value="default">Default Sort</option>
+                            <option value="newest">Recent First</option>
+                            <option value="oldest">Oldest First</option>
+                            <option value="name-az">Name (A-Z)</option>
+                            <option value="name-za">Name (Z-A)</option>
+                            <option value="score-high">High Lead Score</option>
+                            <option value="score-low">Low Lead Score</option>
                         </select>
                     </div>
                 </div>
@@ -905,9 +911,11 @@
                     {% for s in sessions %}
                     <div class="chat-list-item {% if loop.first %}active{% endif %} {% if s.is_lead %}has-keyword-match{% endif %}"
                         data-session-id="{{ s.id }}" data-name="{{ s.visitor_name }}"
-                        data-pinned="{{ 'true' if s.pinned else 'false' }}" data-tags="{{ s.tags or '' }}"
+                        data-pinned="{{ s.pinned | lower }}" data-tags="{{ s.tags or '' }}"
                         data-status="{{ s.status }}" onclick="selectChat({{ s.id }})"
-                        data-score="{{ s.calculated_score | int }}">
+                        data-score="{{ s.calculated_score | int }}"
+                        data-transfer-status="{{ s.transfer_status }}"
+                        data-assigned-agent-id="{{ s.assigned_agent_id or '' }}">
 
                         <div class="chat-time">
                             {% if s.chat_messages %}{{ s.chat_messages[-1].timestamp }}{% endif %}
@@ -925,6 +933,9 @@
                             {% if s.pinned %}<span class="pin-icon">📌</span>{% endif %}
                             <span class="name-text" onclick="event.stopPropagation(); showVisitorProfile({{ s.id }})"
                                 style="cursor:pointer; text-decoration:underline;">{{ s.visitor_name }}</span>
+                            {% if s.transfer_status == 'pending' and s.assigned_agent_id|int == session.get('user_id')|int %}
+                            <i class="bi bi-exclamation-circle-fill text-danger ms-1" title="Transfer Request Incoming"></i>
+                            {% endif %}
                             {% if s.is_lead %}
                             <span class="keyword-flag"> ⚡ Lead ({{ s.calculated_score | int }})</span>
                             {% endif %}
@@ -1195,6 +1206,22 @@
         let currentSessionTags = [];
         const keywords = window.ruleKeywords || [];
         const currentView = '{{ current_view }}';
+        const currentUserId = {{ session.get('user_id') or 'null' }};
+
+        // ===== HANDLE TRANSFER =====
+        async function handleTransfer(sessionId, action) {
+            const res = await fetch(`/api/chat/session/${sessionId}/handle-transfer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                location.reload();
+            } else {
+                alert(data.error || 'Failed to handle transfer');
+            }
+        }
 
         // ===== INIT =====
         document.addEventListener('DOMContentLoaded', () => {
@@ -1302,13 +1329,30 @@
             const item = document.querySelector(`.chat-list-item[data-session-id="${sessionId}"]`);
             const isPinned = item?.dataset.pinned === 'true';
             const isArchived = currentView === 'archived';
+            const transferStatus = item?.dataset.transferStatus;
+            const assignedAgentId = item?.dataset.assignedAgentId;
 
             const menu = document.getElementById('ctxMenu');
-            menu.innerHTML = `
+            let menuHtml = `
                 <div class="ctx-menu-item" onclick="showVisitorProfile(${sessionId})">
                     <span class="me-2">👤</span> View Full Profile
                 </div>
                 <div class="ctx-menu-divider"></div>
+            `;
+
+            if (transferStatus === 'pending' && parseInt(assignedAgentId) === currentUserId) {
+                menuHtml += `
+                    <div class="ctx-menu-item text-success fw-bold" onclick="handleTransfer(${sessionId}, 'accept')">
+                        <span class="me-2">✅</span> Accept Transfer
+                    </div>
+                    <div class="ctx-menu-item text-danger fw-bold" onclick="handleTransfer(${sessionId}, 'reject')">
+                        <span class="me-2">❌</span> Reject Transfer
+                    </div>
+                    <div class="ctx-menu-divider"></div>
+                `;
+            }
+
+            menuHtml += `
                 <div class="ctx-menu-item" onclick="pinChat(${sessionId}, ${!isPinned})">
                     ${isPinned ? '📌 Unpin' : '📌 Pin to Top'}
                 </div>
@@ -1320,6 +1364,7 @@
                 <div class="ctx-menu-item danger" onclick="confirmDeleteChat(${sessionId})">🗑️ Delete Chat</div>
             `;
 
+            menu.innerHTML = menuHtml;
             menu.style.display = 'block';
             menu.style.left = e.clientX + 'px';
             menu.style.top = e.clientY + 'px';

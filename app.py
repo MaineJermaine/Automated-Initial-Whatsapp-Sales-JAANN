@@ -637,7 +637,16 @@ def inject_pending_counts():
     
     # Check if the current user has a pending promotion request (Requirement: account itself able to see pending promotion)
     my_id = session.get('user_id')
-    my_promotion = PromotionRequest.query.filter_by(target_user_id=my_id, status='pending').first()
+    if my_id:
+        try:
+            my_id = int(my_id)
+        except:
+            pass
+            
+    my_user = User.query.get(my_id) if my_id else None
+    
+    # Check if the current user has a pending promotion request
+    my_promotion = PromotionRequest.query.filter_by(target_user_id=my_id, status='pending').first() if my_id else None
     
     my_promotion_data = None
     if my_promotion:
@@ -652,17 +661,21 @@ def inject_pending_counts():
         }
 
     # Team request counts for leaders
-    team_request_count = 0
-    my_user = User.query.get(my_id)
+    team_pending_requests_count = 0
     if my_user and my_user.team_id and my_user.team_role in ['leader', 'vice_leader']:
-        team_request_count = TeamRequest.query.filter_by(team_id=my_user.team_id, status='pending').count()
+        team_pending_requests_count = TeamRequest.query.filter_by(team_id=my_user.team_id, status='pending').count()
+
+    # Chat transfer requests for the current user (Assigned TO me, requested by someone else)
+    transfer_request_count = ChatSession.query.filter_by(assigned_agent_id=my_id, transfer_status='pending').count() if my_id else 0
 
     return dict(
         pending_promotion_count=pending_count, 
         my_promotion=my_promotion_data,
-        team_request_count=team_request_count,
+        team_pending_requests_count=team_pending_requests_count,
+        transfer_request_count=transfer_request_count,
         my_team_id=my_user.team_id if my_user else None,
-        my_team_role=my_user.team_role if my_user else None
+        my_team_role=my_user.team_role if my_user else None,
+        my_user=my_user
     )
 
 @app.context_processor
@@ -1957,10 +1970,10 @@ def api_chat_admin_transfer(session_id):
     from flask import session as flask_session
     from datetime import datetime
     
-    # Check if user is super admin
+    # Check if user is admin/super admin/ultra admin for force actions
     user_role = flask_session.get('user_role', 'agent')
-    if user_role != 'super_admin':
-        return jsonify({'ok': False, 'error': 'Only super admins can forcefully transfer chats.'}), 403
+    if user_role not in ['super_admin', 'ultra_admin']:
+        return jsonify({'ok': False, 'error': 'Only admins can forcefully transfer chats.'}), 403
         
     chat_session = ChatSession.query.get_or_404(session_id)
     data = request.get_json()
@@ -1986,11 +1999,12 @@ def api_chat_admin_transfer(session_id):
     chat_session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
     
     # Add system message
+    role_name = user_role.replace('_', ' ').title()
     sys_msg = ChatMessage(
         session_id=session_id,
         sender_type='system',
         sender_name='System',
-        text=f'🛡️ Super Admin {flask_session.get("user_name")} forcefully transferred this chat from {old_agent_name} to {new_agent.name}.',
+        text=f'🛡️ {role_name} {flask_session.get("user_name")} forcefully transferred this chat from {old_agent_name} to {new_agent.name}.',
         timestamp=datetime.now().strftime('%I:%M %p')
     )
     db.session.add(sys_msg)
@@ -2003,10 +2017,10 @@ def api_chat_force_takeover(session_id):
     from flask import session as flask_session
     from datetime import datetime
     
-    # Check if user is super admin
+    # Check if user is super admin or ultra admin
     user_role = flask_session.get('user_role', 'agent')
-    if user_role != 'super_admin':
-        return jsonify({'ok': False, 'error': 'Only super admins can force take over chats.'}), 403
+    if user_role not in ['super_admin', 'ultra_admin']:
+        return jsonify({'ok': False, 'error': 'Only admins can force take over chats.'}), 403
     
     chat_session = ChatSession.query.get_or_404(session_id)
     old_agent_name = None
@@ -2023,10 +2037,11 @@ def api_chat_force_takeover(session_id):
     chat_session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
     
     # Add system message
+    role_name = user_role.replace('_', ' ').title()
     if old_agent_name:
-        message_text = f'⚡ Super Admin {flask_session.get("user_name", "Admin")} has forcefully taken over this conversation from {old_agent_name}.'
+        message_text = f'⚡ {role_name} {flask_session.get("user_name", "Admin")} has forcefully taken over this conversation from {old_agent_name}.'
     else:
-        message_text = f'⚡ Super Admin {flask_session.get("user_name", "Admin")} has taken over this conversation.'
+        message_text = f'⚡ {role_name} {flask_session.get("user_name", "Admin")} has taken over this conversation.'
     
     system_msg = ChatMessage(
         session_id=session_id,
