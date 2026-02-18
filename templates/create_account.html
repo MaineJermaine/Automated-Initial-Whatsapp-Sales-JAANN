@@ -322,15 +322,15 @@
                                                 </div>
                                                 {% endif %}
                                             </div>
-                                            <div>
-                                                <div class="fw-bold">{{ user.name }}</div>
-                                                <div class="text-muted small">@{{ user.username }}</div>
-                                            </div>
+                                             <div style="cursor: pointer;" onclick="showAgentProfile('{{ user.id }}')">
+                                                 <div class="fw-bold">{{ user.name }}</div>
+                                                 <div class="text-muted small">@{{ user.username }}</div>
+                                             </div>
                                         </div>
                                     </td>
                                     <td>
                                         {% if user.role == 'ultra_admin' %}
-                                        <span class="badge role-ultra-admin">⚡ Ultra Admin</span>
+                                        <span class="badge role-ultra-admin">Ultra Admin</span>
                                         {% elif user.role == 'super_admin' %}
                                         <span class="badge bg-primary-subtle text-primary">Super Admin</span>
                                         {% elif user.role == 'admin' %}
@@ -367,7 +367,7 @@
                                         data-search-status="{{ 'Active' if 'Active' in status else 'Inactive' }}">
                                         <div class="btn-group">
                                             <button class="btn btn-sm btn-outline-primary"
-                                                onclick="viewUser('{{ user.id }}')" title="View Profile">
+                                                onclick="showAgentProfile('{{ user.id }}')" title="View Profile">
                                                 👁️
                                             </button>
 
@@ -648,43 +648,7 @@
         </div>
     </div>
 
-    <!-- Modal View User -->
-    <div class="modal fade" id="viewUserModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow" style="border-radius: 16px;">
-                <div class="modal-header border-0 pb-0">
-                    <h5 class="modal-title fw-bold">User Profile</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body text-center py-4">
-                    <div class="avatar-circle mx-auto mb-3"
-                        style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; border: 3px solid #eee;">
-                        <img id="viewUserPic" src="" alt="User" style="width: 100%; height: 100%; object-fit: cover;">
-                    </div>
-                    <h4 id="viewUserName" class="fw-bold mb-1"></h4>
-                    <p id="viewUserHandle" class="text-primary mb-3"></p>
-                    <div class="mb-3">
-                        <span id="viewUserRole" class="badge bg-primary-subtle text-primary px-3 py-2"></span>
-                    </div>
 
-                    <div class="mb-3 px-4">
-                        <div class="d-flex align-items-center justify-content-between p-3 border rounded-4 bg-white shadow-sm">
-                            <div class="text-start">
-                                <div class="h4 fw-bold text-primary mb-0" id="viewUserScore">0</div>
-                                <div class="small text-muted">Individual Score</div>
-                            </div>
-                            <i class="bi bi-trophy-fill fs-2 text-warning opacity-75"></i>
-                        </div>
-                    </div>
-
-                    <div class="text-start px-4">
-                        <label class="fw-bold small text-muted">Biography</label>
-                        <p id="viewUserBio" class="bg-light p-3 rounded" style="font-size: 0.9rem;"></p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Move User Modal -->
     <div class="modal fade" id="moveUserModal" tabindex="-1">
@@ -819,7 +783,7 @@
         // Global User Context for Standardized Modals
         window.currUserId = {{ session.get('user_id', 0) }};
         window.currUserRole = "{{ session.get('user_role', 'agent') }}";
-        window.currUsername = "{{ session.get('user_username', '') }}";
+        window.currUsername = "{{ session.get('user_name', '') }}"; // In this app, session['user_name'] is the username Handle
 
         const filterPrefix = 'userConfig_';
 
@@ -1061,35 +1025,12 @@
             if (data.success) {
                 location.reload();
             } else {
-                alert(data.error);
+                alertUser(data.error, 'error');
             }
         }
 
         // --- Team Details Logic ---
         // showTeamDetails is now standardized in app.js
-
-        function toggleTeamEditMode(enable) {
-            document.getElementById('teamViewMode').style.display = enable ? 'none' : 'block';
-            document.getElementById('teamEditMode').style.display = enable ? 'block' : 'none';
-        }
-
-        document.getElementById('editTeamForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const teamId = document.getElementById('editTeamId').value;
-            const formData = new FormData(e.target);
-
-            const res = await fetch(`/api/teams/${teamId}/update`, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (res.ok) {
-                location.reload();
-            } else {
-                const data = await res.json();
-                alert(data.error || "Failed to update team.");
-            }
-        });
 
         function initiateMoveUser(userId) {
             document.getElementById('moveUserId').value = userId;
@@ -1098,7 +1039,25 @@
         }
 
         async function memberAction(username, action) {
-            if (action === 'transfer_leader' && !confirm(`Are you sure you want to transfer leadership to @${username}? You will become a Vice-Leader.`)) return;
+            if (action === 'transfer_leader') {
+                askConfirmation(
+                    "Transfer Leadership?",
+                    `Are you sure you want to transfer leadership to @${username}? You will become a Vice-Leader.`,
+                    "👑",
+                    async () => {
+                        const res = await fetch('/api/teams/member-action', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, action })
+                        });
+
+                        if (res.ok) location.reload();
+                        else alertUser("Failed to perform action.", 'error');
+                    },
+                    'btn-warning'
+                );
+                return;
+            }
 
             const res = await fetch('/api/teams/member-action', {
                 method: 'POST',
@@ -1107,69 +1066,56 @@
             });
 
             if (res.ok) location.reload();
-            else alert("Failed to perform action.");
+            else alertUser("Failed to perform action.", 'error');
         }
 
         async function kickMember(username) {
-            if (!confirm(`Are you sure you want to kick @${username} from the team?`)) return;
+            askConfirmation(
+                "Kick Member?",
+                `Are you sure you want to kick @${username} from the team?`,
+                "👢",
+                async () => {
+                    const res = await fetch('/api/teams/kick', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username })
+                    });
 
-            const res = await fetch('/api/teams/kick', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username })
-            });
-
-            if (res.ok) location.reload();
-            else alert("Failed to kick member.");
+                    if (res.ok) location.reload();
+                    else {
+                        const data = await res.json();
+                        alertUser(data.error || "Failed to kick member.", 'error');
+                    }
+                },
+                'btn-danger'
+            );
         }
 
         async function confirmDeleteTeam(teamId, teamName) {
-            if (!confirm(`Are you sure you want to delete "${teamName}"? This will unassign all members.`)) return;
-
-            const res = await fetch(`/api/teams/${teamId}/delete`, { method: 'POST' });
-            if (res.ok) {
-                location.reload();
-            } else {
-                const data = await res.json();
-                alert(data.error || "Failed to delete team.");
-            }
+            askConfirmation(
+                "Delete Team?",
+                `Are you sure you want to delete "${teamName}"? This will unassign all members.`,
+                "🗑️",
+                async () => {
+                    try {
+                        const res = await fetch(`/api/teams/${teamId}/delete`, { method: 'POST' });
+                        if (res.ok) {
+                            window.location.reload();
+                        } else {
+                            const data = await res.json();
+                            alertUser(data.error || "Failed to delete team.", 'error');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alertUser("An error occurred while deleting the team.", 'error');
+                    }
+                },
+                'btn-danger'
+            );
         }
 
 
-        // VIEW USER
-        async function viewUser(userId) {
-            const res = await fetch(`/api/admin/user/${userId}`);
-            if (res.ok) {
-                const data = await res.json();
-                document.getElementById('viewUserName').textContent = data.name;
-                document.getElementById('viewUserHandle').textContent = `@${data.username}`;
-                document.getElementById('viewUserRole').innerHTML =
-                    data.role === 'ultra_admin' ? '⚡ Ultra Admin' :
-                        data.role === 'super_admin' ? 'Super Admin' :
-                            data.role === 'admin' ? 'Admin' : 'Agent';
 
-                // Update badge color
-                const badge = document.getElementById('viewUserRole');
-                badge.className = 'badge px-3 py-2 ' + (
-                    data.role === 'ultra_admin' ? 'role-ultra-admin' :
-                        data.role === 'super_admin' ? 'bg-primary-subtle text-primary' :
-                            data.role === 'admin' ? 'bg-info-subtle text-info' :
-                                'bg-secondary-subtle text-secondary'
-                );
-                document.getElementById('viewUserBio').textContent = data.bio || 'No biography available.';
-
-                const picUrl = data.profile_picture ?
-                    (data.profile_picture.startsWith('http') ? data.profile_picture : `/static/uploads/${data.profile_picture}`) :
-                    `https://ui-avatars.com/api/?name=${data.name}&background=random`;
-                document.getElementById('viewUserPic').src = picUrl;
-                
-                // Populate score
-                document.getElementById('viewUserScore').textContent = data.agent_score || 0;
-                
-                const modal = new bootstrap.Modal(document.getElementById('viewUserModal'));
-                modal.show();
-            }
-        }
 
 
 

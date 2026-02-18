@@ -461,8 +461,49 @@ function showToast(message, color = "green") {
 }
 
 function hideToast() {
-    document.getElementById("siteToast").classList.add("hidden");
+    const toast = document.getElementById("siteToast");
+    if (toast) toast.classList.add("hidden");
 }
+window.stdAskConfirmation = function(title, message, icon, action, btnClass = 'btn-primary') {
+    let modalEl = document.getElementById('stdConfirmationModal');
+    if (!modalEl) {
+        const modalHtml = `
+<div class="modal fade" id="stdConfirmationModal" tabindex="-1" aria-hidden="true" style="z-index: 2060;">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+            <div class="modal-body text-center py-4">
+                <div id="stdConfirmIcon" class="mb-3" style="font-size: 3rem;">⚠️</div>
+                <h5 id="stdConfirmTitle" class="fw-bold">Are you sure?</h5>
+                <p id="stdConfirmMessage" class="text-muted small px-3"></p>
+                <div class="d-flex gap-2 justify-content-center mt-4">
+                    <button type="button" class="btn btn-gray w-100" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="stdConfirmActionBtn" class="btn btn-primary w-100">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modalEl = document.getElementById('stdConfirmationModal');
+    }
+
+    document.getElementById('stdConfirmTitle').textContent = title;
+    document.getElementById('stdConfirmMessage').textContent = message;
+    document.getElementById('stdConfirmIcon').textContent = icon || '⚠️';
+    const btn = document.getElementById('stdConfirmActionBtn');
+    
+    // Add class for specific color
+    btn.className = `btn w-100 ${btnClass}`;
+    
+    btn.onclick = () => {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        if (modal) modal.hide();
+        if (typeof action === 'function') action();
+    };
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+};
 
 /* ==========================================================================
    4. SINGLE INITIALIZATION (runs ONCE on every page)
@@ -922,6 +963,7 @@ window.showTeamDetails = async function(teamId) {
                             <div class="h4 fw-bold text-primary" id="stdTeamScore">0</div>
                         </div>
                         <div class="col-md-8 ps-4">
+                            <h3 id="stdTeamName" class="fw-bold text-dark mb-3"></h3>
                             <div class="mb-3">
                                 <label class="small fw-bold text-muted text-uppercase mb-1 d-block">Description</label>
                                 <p id="stdTeamDesc" class="mb-0 text-dark" style="font-size: 0.95rem;"></p>
@@ -1025,15 +1067,26 @@ window.showTeamDetails = async function(teamId) {
         document.getElementById('stdDeleteTeamBtn').onclick = () => {
              const tid = modalEl.getAttribute('data-team-id');
              const name = document.getElementById('stdTeamName').textContent;
-             if (confirm(`Are you sure you want to delete "${name}"? This will unassign all members.`)) {
-                 fetch(`/api/teams/${tid}/delete`, { method: 'POST' })
-                     .then(res => res.json())
-                     .then(data => {
-                         if (data.success) location.reload();
-                         else alert(data.error || "Failed to delete team");
-                     })
-                     .catch(err => console.error(err));
-             }
+             window.stdAskConfirmation(
+                 "Delete Team?",
+                 `Are you sure you want to delete "${name}"? This action will unassign all members and cannot be undone.`,
+                 "🗑️",
+                 async () => {
+                     try {
+                         const res = await fetch(`/api/teams/${tid}/delete`, { method: 'POST' });
+                         const data = await res.json();
+                         if (data.success) {
+                             window.location.reload();
+                         } else {
+                             alert(data.error || "Failed to delete team");
+                         }
+                     } catch (err) {
+                         console.error(err);
+                         alert("An error occurred while deleting the team.");
+                     }
+                 },
+                 'btn-danger'
+             );
         };
     }
 

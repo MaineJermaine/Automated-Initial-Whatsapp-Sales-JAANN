@@ -2186,6 +2186,10 @@ def my_team():
         pending_join_requests = []
         # Fetch available teams and user's requests
         all_teams = Team.query.all()
+        # Calculate dynamic scores for all teams
+        for t in all_teams:
+            t.dynamic_score = calculate_team_score(t.id)
+            
         # Create a set of requested team IDs for easy lookup in template
         pending_reqs = TeamRequest.query.filter_by(user_id=user.id, status='pending').all()
         my_requests = [r.team_id for r in pending_reqs]
@@ -2804,7 +2808,7 @@ def get_teams():
             'description': t.description,
             'role': t.role,
             'department': t.department,
-            'team_score': t.team_score,
+            'team_score': calculate_team_score(t.id),
             'team_tag': t.team_tag,
             'member_count': len(t.members)
         })
@@ -2895,6 +2899,13 @@ def team_request_action():
     current_user = User.query.get(session.get('user_id'))
     target_user = User.query.get(target_user_id)
     
+    # Leadership Integrity Check for Removal
+    if (not target_team_id or str(target_team_id).lower() == 'none') and target_user.team_id:
+        if target_user.team_role == 'leader':
+            others_count = User.query.filter(User.team_id == target_user.team_id, User.id != target_user.id).count()
+            if others_count > 0:
+                return jsonify({'error': f'Leadership Integrity: {target_user.name} is the team leader. You cannot remove the leader while there are other members in the team. Please transfer leadership first.'}), 400
+
     # Handle removal (no team)
     if not target_team_id or str(target_team_id).lower() == 'none':
         if current_user.role == 'ultra_admin' or (current_user.role == 'super_admin' and target_user.role in ['admin', 'agent']) or (current_user.role == 'admin' and target_user.id == current_user.id):
@@ -2908,14 +2919,11 @@ def team_request_action():
     if not target_team:
         return jsonify({'error': 'Target team not found.'}), 404
 
-    # NEW: Safety check for Leaders
-    # If the TARGET user is currently a leader of their team, they must have someone else ready to lead.
+    # Leadership Integrity Check for Moving
     if target_user.team_id and target_user.team_role == 'leader' and target_user.team_id != target_team_id:
-        other_members = User.query.filter(User.team_id == target_user.team_id, User.id != target_user.id).all()
-        if other_members:
-            other_leader = User.query.filter(User.team_id == target_user.team_id, User.id != target_user.id, User.team_role == 'leader').first()
-            if not other_leader:
-                 return jsonify({'error': f'User {target_user.username} is the only leader of their team. Please promote another member to leader before moving them.'}), 400
+        others_count = User.query.filter(User.team_id == target_user.team_id, User.id != target_user.id).count()
+        if others_count > 0:
+             return jsonify({'error': f'Leadership Integrity: {target_user.name} is the team leader. You cannot move the leader to a new team while there are other members present. Please transfer leadership first.'}), 400
 
     # Permission Checks
     can_perform = False
@@ -3086,6 +3094,12 @@ def kick_member():
     # Leaders can only kick agents (non-admin accounts)
     if is_leader and not is_any_admin and target_user.role != 'agent':
         return jsonify({'error': 'Leaders can only kick regular agents.'}), 403
+
+    # Leadership Integrity Check for Kick (if kicking a leader)
+    if target_user.team_role == 'leader':
+        others_count = User.query.filter(User.team_id == target_user.team_id, User.id != target_user.id).count()
+        if others_count > 0:
+            return jsonify({'error': f'Leadership Integrity: {target_user.name} is the team leader. You cannot kick the leader while there are other members in the team. Please transfer leadership first.'}), 400
 
     target_user.team_id = None
     target_user.team_role = None
