@@ -3,17 +3,10 @@ services:
     name: web-app-assignment
     runtime: python
     plan: free
-    region: singapore
     buildCommand: "python -m pip install poetry && python -m poetry install"
     startCommand: "python -m poetry run gunicorn app:app"
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: FLASK_ENV
-        value: production
       - key: DATABASE_URL
-        value: sqlite:////data/database.db
-    disk:
-      name: sqlite-data
-      mountPath: /data
-      sizeGB: 1
+        fromDatabase:
+          name: your-db-name-here
+          property: connectionString
