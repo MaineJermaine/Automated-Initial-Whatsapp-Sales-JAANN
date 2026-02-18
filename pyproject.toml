@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "web-application-assignment"
+version = "0.1.0"
+description = "A CRM and Team Management Web Application"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+flask = "^3.0.0"
+flask-sqlalchemy = "^3.1.1"
+gunicorn = "^21.2.0"
+werkzeug = "^3.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -8,13 +8,17 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+# Database Configuration - use ENV var if available for Render/Cloud deployment
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
+
+# Upload Folder Configuration
+app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'static/uploads')
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 db = SQLAlchemy(app)
-app.secret_key = 'secure_admin_key_2026'
+app.secret_key = os.environ.get('SECRET_KEY', 'secure_admin_key_2026')
 
 # --- 1. MODELS (All models must be defined before create_all) ---
 
