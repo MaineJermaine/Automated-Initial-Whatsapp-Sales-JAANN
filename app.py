@@ -2513,11 +2513,20 @@ def auto_reply():
 @app.route('/api/inquiries')
 def get_inquiries():
     search = request.args.get('search', '').lower()
-    status_filters = request.args.getlist('status[]')
+    inq_id = request.args.get('id', '')
+    
+    # Support both single and multiple filters
+    status_filter = request.args.get('status', '')
+    status_list = request.args.getlist('status[]')
+    
+    type_filter = request.args.get('type', '')
+    type_list = request.args.getlist('type[]')
     
     # We join with User to get the current display name based on username
     query = db.session.query(Inquiry, User).outerjoin(User, Inquiry.assigned_rep == User.username)
     
+    if inq_id:
+        query = query.filter(Inquiry.id == inq_id)
     if search:
         query = query.filter(or_(
             Inquiry.customer.ilike(f'%{search}%'),
@@ -2525,8 +2534,18 @@ def get_inquiries():
             User.username.ilike(f'%{search}%'),
             Inquiry.assigned_rep.ilike(f'%{search}%')
         ))
-    if status_filters:
-        query = query.filter(Inquiry.status.in_(status_filters))
+    
+    # Apply status filter
+    if status_filter:
+        query = query.filter(Inquiry.status == status_filter)
+    elif status_list:
+        query = query.filter(Inquiry.status.in_(status_list))
+        
+    # Apply type filter
+    if type_filter:
+        query = query.filter(Inquiry.inquiry_type == type_filter)
+    elif type_list:
+        query = query.filter(Inquiry.inquiry_type.in_(type_list))
         
     results = query.all()
     
@@ -3280,25 +3299,73 @@ def api_team_chat(team_id):
             })
         
         return jsonify({'messages': result})
-    
-    else: # POST
+
+    elif request.method == 'POST':
         data = request.get_json()
-        text = data.get('message')
-        if not text:
-            return jsonify({'error': 'Empty message'}), 400
-            
-        from datetime import datetime
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        msg_text = data.get('message')
+        if not msg_text:
+            return jsonify({'error': 'Message required'}), 400
         
-        msg = TeamMessage(
+        import datetime
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        new_msg = TeamMessage(
             team_id=team_id,
             user_id=user_id,
-            message=text,
-            created_at=current_time
+            message=msg_text,
+            created_at=now
         )
-        db.session.add(msg)
+        db.session.add(new_msg)
         db.session.commit()
-        return jsonify({'success': True, 'id': msg.id})
+        
+        return jsonify({'success': True})
+
+@app.route('/api/teams/message/<int:message_id>/edit', methods=['POST'])
+def api_team_edit_message(message_id):
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    user_id = session.get('user_id')
+    msg = TeamMessage.query.get_or_404(message_id)
+    user = User.query.get(user_id)
+    
+    # Ownership or leadership/admin check
+    is_admin = user.role in ['ultra_admin', 'super_admin']
+    is_leader = user.team_role == 'leader' and user.team_id == msg.team_id
+    is_owner = msg.user_id == user_id
+    
+    if not (is_admin or is_leader or is_owner):
+        return jsonify({'error': 'Forbidden'}), 403
+        
+    data = request.get_json()
+    new_text = data.get('message')
+    if not new_text or not new_text.strip():
+        return jsonify({'error': 'Message cannot be empty.'}), 400
+
+    msg.message = new_text.strip()
+    db.session.commit()
+    return jsonify({'success': True, 'message': msg.message})
+
+@app.route('/api/teams/message/<int:message_id>/delete', methods=['POST'])
+def api_team_delete_message(message_id):
+    if not session.get('logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    user_id = session.get('user_id')
+    msg = TeamMessage.query.get_or_404(message_id)
+    user = User.query.get(user_id)
+    
+    # Ownership or leadership/admin check
+    is_admin = user.role in ['ultra_admin', 'super_admin']
+    is_leader = user.team_role == 'leader' and user.team_id == msg.team_id
+    is_owner = msg.user_id == user_id
+    
+    if not (is_admin or is_leader or is_owner):
+        return jsonify({'error': 'Forbidden'}), 403
+        
+    db.session.delete(msg)
+    db.session.commit()
+    return jsonify({'success': True, 'id': msg.id})
 
 
 

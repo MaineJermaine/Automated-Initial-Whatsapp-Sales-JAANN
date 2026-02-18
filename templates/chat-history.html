@@ -495,90 +495,66 @@
         }
 
         /* --- Message Actions --- */
+        /* Message Actions */
         .msg-actions {
             position: absolute;
-            top: -55px;
-            /* Adjusted for 50px height + gap */
+            top: -24px;
+            right: 0;
             display: flex;
-            gap: 6px;
+            gap: 4px;
             opacity: 0;
             transition: opacity 0.2s;
+            background: rgba(255,255,255,0.9);
+            padding: 2px 6px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             z-index: 10;
-            padding-bottom: 15px;
-            /* Extend invisible hit area to connect with bubble */
-            pointer-events: none;
         }
 
-        .chat-bubble:hover .msg-actions,
-        .msg-actions:hover {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        /* Agent (Right aligned) -> Actions on Left */
-        .bubble-agent .msg-actions {
-            left: 0;
-            flex-direction: row;
-            transform: none;
-            /* Actually, if it's agent (right side), maybe we want actions on top-left aligned? */
-            /* Previous logic: left: -10px; transform: translateX(-100%); meant LEFT of the bubble. */
-            /* User complained about disappearing. keeping it above is safer. */
-            /* Let's align to the inner edge relative to screen side? */
-            /* Agent bubble is on Right. Actions on Top-Left of bubble looks good. */
-            left: 0;
-        }
-
-        /* Bot/Customer (Left aligned) -> Actions on Right side of top? */
-        .bubble-bot .msg-actions,
-        .bubble-customer .msg-actions {
+        .message-row.mine .msg-actions {
             right: 0;
-            /* Actions on Top-Right of bubble */
+            left: auto;
+        }
+
+        .message-row.other .msg-actions {
+            left: 0;
+            right: auto;
+        }
+
+        .chat-bubble:hover .msg-actions {
+            opacity: 1;
         }
 
         .msg-action-btn {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            background: #fef08a;
-            /* Yellow background for the circle */
-            border: 1px solid #e2e8f0;
-            color: #475569;
-            /* Standard gray for the icon symbol */
+            background: none;
+            border: none;
+            padding: 2px 4px;
+            font-size: 0.8rem;
+            color: #64748b;
+            cursor: pointer;
+            transition: 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            font-size: 1.1rem;
-            /* Standard visual size for the symbol */
-            transition: 0.2s;
-            padding: 0;
         }
 
         .msg-action-btn:hover {
+            color: var(--blue);
             transform: scale(1.1);
-            z-index: 2;
-            background: #fde047;
-            /* Darker yellow on hover */
-            color: #1e293b;
-            /* Darker gray icon on hover */
         }
 
-        /* Specific hover colors if needed, but keeping yellow theme dominant as requested */
         .msg-action-btn.delete:hover {
-            /* If user strictly wants yellow circle, we might not want to switch to red background? */
-            /* But delete usually is red. I'll maintain the yellow theme for consistency with 'yellow' request, */
-            /* or maybe add a red/blue border/text hint? */
-            /* User said "make the icons... yellow". I'll stick to yellow background. */
-            color: #dc2626;
-            /* Turn icon red */
-            border-color: #fca5a5;
+            color: #ef4444;
         }
 
-        .msg-action-btn.edit:hover {
-            color: #2563eb;
-            /* Turn icon blue */
-            border-color: #93c5fd;
+        .edit-container textarea {
+            width: 100%;
+            min-width: 200px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            font-size: 0.9rem;
+            margin-bottom: 6px;
         }
 
         /* --- Input Area --- */
@@ -747,48 +723,7 @@
 
 
 
-        /* Message action buttons */
-        .chat-bubble {
-            position: relative;
-            /* Needed for absolute positioning of actions */
-        }
 
-        .msg-actions {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            display: flex;
-            gap: 4px;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .chat-bubble:hover .msg-actions {
-            opacity: 1;
-        }
-
-        .msg-action-btn {
-            background: none;
-            border: none;
-            color: #94a3b8;
-            font-size: 0.8em;
-            cursor: pointer;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: 0.2s;
-            padding: 0;
-        }
-
-        .msg-action-btn.delete:hover {
-            color: #dc2626;
-        }
-
-        .msg-action-btn.edit:hover {
-            color: #2563eb;
-        }
     </style>
 </head>
 
@@ -1397,23 +1332,16 @@
 
         // ===== DELETE CHAT =====
         function confirmDeleteChat(sessionId) {
-            const overlay = document.getElementById('confirmOverlay');
-            overlay.style.display = 'flex';
-            overlay.className = 'confirm-overlay';
-            overlay.innerHTML = `
-                <div class="confirm-card">
-                    <h3>🗑️ Delete Chat</h3>
-                    <p>This will permanently delete this conversation and all its messages. This action cannot be undone.</p>
-                    <div class="btn-group">
-                        <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
-                        <button class="btn btn-sm" style="background:#dc2626;color:white;" onclick="deleteChat(${sessionId})">Delete</button>
-                    </div>
-                </div>
-            `;
+            askConfirmation(
+                "Delete Chat?",
+                "This will permanently delete this conversation and all its messages. This action cannot be undone.",
+                "🗑️",
+                () => deleteChat(sessionId),
+                'btn-danger'
+            );
         }
 
         async function deleteChat(sessionId) {
-            document.getElementById('confirmOverlay').style.display = 'none';
             await fetch(`/api/chat/session/${sessionId}/delete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
@@ -1692,16 +1620,16 @@
             if (msg.sender_type === 'agent' || msg.sender_type === 'bot') {
                 actionBtns = `
                     <div class="msg-actions">
-                        <button class="msg-action-btn edit" onclick="editMessage(${msg.id}, this)" title="Edit message">✎</button>
-                        <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>
+                        <button class="msg-action-btn edit" onclick="editMessage(${msg.id}, this)" title="Edit"><i class="bi bi-pencil"></i></button>
+                        <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete"><i class="bi bi-trash"></i></button>
                     </div>
-                 `;
+                `;
             } else if (msg.sender_type === 'customer') {
                 actionBtns = `
                     <div class="msg-actions">
-                        <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete message">✕</button>
+                        <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id}, this)" title="Delete"><i class="bi bi-trash"></i></button>
                     </div>
-                 `;
+                `;
             }
 
             row.innerHTML = `
@@ -1710,8 +1638,8 @@
                 </div>
                 <div class="chat-bubble ${bubbleClass} ${hasMatch ? 'bubble-keyword-match' : ''}" data-msgId="${msg.id}">
                     ${actionBtns}
-                    <div><small class="fw-bold opacity-75">${msg.sender_name}</small></div>
-                    <div>${textHtml}</div>
+                    <div class="msg-sender"><small class="fw-bold opacity-75">${msg.sender_name}</small></div>
+                    <div class="msg-content">${textHtml}</div>
                     <div class="bubble-time">${msg.timestamp || ''}</div>
                 </div>
             `;
@@ -1720,24 +1648,59 @@
 
         // ===== DELETE MESSAGE =====
         async function deleteMessage(msgId, btnEl) {
-            if (!confirm('Delete this message?')) return;
+            askConfirmation(
+                "Delete Message?",
+                "Are you sure you want to delete this message? This cannot be undone.",
+                "🗑️",
+                async () => {
+                    try {
+                        const res = await fetch(`/api/chat/message/${msgId}/delete`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        const data = await res.json();
 
-            const res = await fetch(`/api/chat/message/${msgId}/delete`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            const data = await res.json();
+                        if (data.ok) {
+                            const bubble = btnEl.closest('.chat-bubble');
+                            bubble.style.transition = 'opacity 0.3s, transform 0.3s';
+                            bubble.style.opacity = '0.5';
+                            const textDiv = Array.from(bubble.children).find(el =>
+                                el.tagName === 'DIV' &&
+                                !el.classList.contains('bubble-time') &&
+                                !el.classList.contains('edit-container') &&
+                                !el.classList.contains('msg-actions')
+                            );
+                            if (textDiv) textDiv.innerHTML = '<i>Message deleted</i>';
+                            const actions = bubble.querySelector('.msg-actions');
+                            if (actions) actions.remove();
+                            if (typeof showToast === 'function') showToast("Message deleted.", "blue");
+                        } else {
+                            if (typeof showToast === 'function') showToast(data.error || 'Cannot delete message.', "red");
+                            else alert(data.error || 'Cannot delete this message.');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        if (typeof showToast === 'function') showToast('Error deleting message.', "red");
+                        else alert('Error deleting message.');
+                    }
+                },
+                'btn-danger'
+            );
+        }
 
-            if (data.ok) {
-                // Remove bubble from DOM
-                const bubble = btnEl.closest('.chat-bubble');
-                bubble.style.transition = 'opacity 0.3s, transform 0.3s';
-                bubble.style.opacity = '0';
-                bubble.style.transform = 'scale(0.8)';
-                setTimeout(() => bubble.remove(), 300);
-            } else {
-                alert(data.error || 'Cannot delete this message.');
-            }
+        function askConfirmation(title, message, icon, action, btnClass = 'btn-primary') {
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            document.getElementById('confirmIcon').textContent = icon;
+            const btn = document.getElementById('confirmActionBtn');
+            btn.className = `btn flex-grow-1 ${btnClass}`;
+            btn.onclick = () => {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('confirmationModal'));
+                if (modal) modal.hide();
+                action();
+            };
+            const modal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+            modal.show();
         }
 
         function escapeHtml(str) {
@@ -1833,30 +1796,24 @@
             if (data.ok) {
                 selectChat(currentSessionId); // Refresh UI
             } else {
-                alert(data.error || 'Failed to take over.');
+            alert(data.error || 'Failed to take over.');
             }
         }
 
         function requestTransfer() {
-            const overlay = document.getElementById('confirmOverlay');
-            overlay.style.display = 'flex';
-            overlay.className = 'confirm-overlay';
-            overlay.innerHTML = `
-                <div class="confirm-card">
-                    <h3>🔄 Request Transfer</h3>
-                    <p>Request to take over this chat from the current agent? They will be notified and can accept or reject your request.</p>
-                    <div class="btn-group">
-                        <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
-                        <button class="btn btn-blue" onclick="executeRequestTransfer()">Send Request</button>
-                    </div>
-                </div>
-            `;
+            askConfirmation(
+                "Request Transfer?",
+                "Request to take over this chat from the current agent? They will be notified and can accept or reject your request.",
+                "🤝",
+                () => executeRequestTransfer(),
+                'btn-blue'
+            );
         }
 
         async function executeRequestTransfer() {
-            document.getElementById('confirmOverlay').style.display = 'none';
             const res = await fetch(`/api/chat/session/${currentSessionId}/request-transfer`, {
-                method: 'POST'
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
             });
             const data = await res.json();
             if (data.ok) {
@@ -1881,23 +1838,16 @@
         }
 
         function forceTakeOver() {
-            const overlay = document.getElementById('confirmOverlay');
-            overlay.style.display = 'flex';
-            overlay.className = 'confirm-overlay';
-            overlay.innerHTML = `
-                <div class="confirm-card">
-                    <h3 style="color:#dc2626;">⚡ Force Take Over</h3>
-                    <p><strong>Warning:</strong> This will immediately transfer the chat to you without requiring approval from the current agent. Use this power responsibly.</p>
-                    <div class="btn-group">
-                        <button class="btn btn-gray" onclick="document.getElementById('confirmOverlay').style.display='none'">Cancel</button>
-                        <button class="btn btn-sm" style="background:#dc2626;color:white;" onclick="executeForceTakeOver()">Force Take Over</button>
-                    </div>
-                </div>
-            `;
+            askConfirmation(
+                "Force Take Over?",
+                "Warning: This will immediately transfer the chat to you without requiring approval from the current agent. Use this power responsibly.",
+                "⚡",
+                () => executeForceTakeOver(),
+                'btn-danger'
+            );
         }
 
         async function executeForceTakeOver() {
-            document.getElementById('confirmOverlay').style.display = 'none';
 
             const res = await fetch(`/api/chat/session/${currentSessionId}/force-takeover`, {
                 method: 'POST',
@@ -2147,13 +2097,8 @@
         // ===== EDIT MESSAGE =====
         function editMessage(msgId, btn) {
             const bubble = btn.closest('.chat-bubble');
-            // Select the div that is NOT one of the UI controls
-            const textDiv = Array.from(bubble.children).find(el =>
-                el.tagName === 'DIV' &&
-                !el.classList.contains('bubble-time') &&
-                !el.classList.contains('edit-container') &&
-                !el.classList.contains('msg-actions')
-            );
+            // Specifically target the message content div
+            const textDiv = bubble.querySelector('.msg-content');
 
             if (!textDiv) return;
 
@@ -2221,12 +2166,7 @@
         function cancelEdit(btn) {
             const container = btn.closest('.edit-container');
             const bubble = container.closest('.chat-bubble');
-            const textDiv = Array.from(bubble.children).find(el =>
-                el.tagName === 'DIV' &&
-                !el.classList.contains('bubble-time') &&
-                !el.classList.contains('edit-container') &&
-                !el.classList.contains('msg-actions')
-            );
+            const textDiv = bubble.querySelector('.msg-content');
 
             if (textDiv) textDiv.style.display = '';
             container.remove();
@@ -2241,37 +2181,40 @@
             const newText = textarea.value.trim();
 
             if (!newText) {
-                alert("Message cannot be empty.");
+                if (typeof showToast === 'function') showToast("Message cannot be empty.", "red");
+                else alert("Message cannot be empty.");
                 return;
             }
 
-            const res = await fetch(`/api/chat/message/${msgId}/edit`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: newText })
-            });
-            const data = await res.json();
+            try {
+                const res = await fetch(`/api/chat/message/${msgId}/edit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: newText })
+                });
+                const data = await res.json();
 
-            if (data.ok) {
-                const bubble = container.closest('.chat-bubble');
-                // The text div
-                const textDiv = Array.from(bubble.children).find(el =>
-                    el.tagName === 'DIV' &&
-                    !el.classList.contains('bubble-time') &&
-                    !el.classList.contains('edit-container') &&
-                    !el.classList.contains('msg-actions')
-                );
+                if (data.ok) {
+                    const bubble = container.closest('.chat-bubble');
+                    // The text div
+                    const textDiv = bubble.querySelector('.msg-content');
 
-                if (textDiv) {
-                    textDiv.innerText = data.text; // Ensure HTML safety if returning raw text, or escapeHtml if backend returns raw
-                    textDiv.style.display = '';
+                    if (textDiv) {
+                        textDiv.innerText = data.text; 
+                        textDiv.style.display = '';
+                    }
+                    container.remove();
+
+                    const actions = bubble.querySelector('.msg-actions');
+                    if (actions) actions.style.display = '';
+                    if (typeof showToast === 'function') showToast("Message updated.", "green");
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Error saving message.", "red");
+                    else alert(data.error || "Error saving message.");
                 }
-                container.remove();
-
-                const actions = bubble.querySelector('.msg-actions');
-                if (actions) actions.style.display = '';
-            } else {
-                alert(data.error || "Error saving message.");
+            } catch (err) {
+                if (typeof showToast === 'function') showToast("Error connecting to server.", "red");
+                else alert("Error connecting to server.");
             }
         }
 
@@ -2495,6 +2438,23 @@
 
     <!-- Team Details Modal is now standardized and injected by app.js -->
 
+
+    <!-- Confirmation Modal -->
+    <div class="modal fade" id="confirmationModal" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+                <div class="modal-body p-4 text-center">
+                    <div id="confirmIcon" class="mb-3" style="font-size: 3rem;">❓</div>
+                    <h5 id="confirmTitle" class="fw-bold mb-2">Are you sure?</h5>
+                    <p id="confirmMessage" class="text-muted small mb-4"></p>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-light flex-grow-1" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" id="confirmActionBtn" class="btn btn-primary flex-grow-1">Confirm</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Forced Transfer Modal (Super Admin) -->
     <div class="modal fade" id="adminTransferModal" tabindex="-1" aria-hidden="true">

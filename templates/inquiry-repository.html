@@ -92,18 +92,38 @@
         </div>
 
         <div class="filter-group p-3 bg-white border rounded mb-4 shadow-sm">
-            <div class="row g-3 align-items-center">
-                <div class="col-md-4">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Search</label>
                     <input type="text" id="search-input" class="form-control"
-                        placeholder="Search customer or representative...">
+                        placeholder="Customer or rep...">
                 </div>
-                <div class="col-md-8 d-flex gap-3" id="status-filters">
-                    {% for s in ["New", "In Progress", "Resolved", "Urgent"] %}
-                    <div class="form-check">
-                        <input class="form-check-input filter-cb" type="checkbox" value="{{s}}" id="f-{{s}}" checked>
-                        <label class="form-check-label small" for="f-{{s}}">{{s}}</label>
-                    </div>
-                    {% endfor %}
+                <div class="col-md-2">
+                    <label class="form-label small text-muted mb-1">Inquiry ID</label>
+                    <input type="number" id="id-filter" class="form-control" placeholder="ID...">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Status</label>
+                    <select id="status-filter" class="form-select filter-select">
+                        <option value="">All Statuses</option>
+                        {% for s in ["New", "In Progress", "Resolved", "Urgent"] %}
+                        <option value="{{s}}">{{s}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small text-muted mb-1">Type</label>
+                    <select id="type-filter" class="form-select filter-select">
+                        <option value="">All Types</option>
+                        {% for t in ["Sales", "Support", "Product"] %}
+                        <option value="{{t}}">{{t}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-1 d-flex justify-content-end">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="resetFilters()" title="Reset Filters">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
                 </div>
             </div>
         </div>
@@ -137,9 +157,11 @@
         let debounceTimer;
         async function refreshTable() {
             const search = document.getElementById('search-input').value;
-            const checkboxes = document.querySelectorAll('.filter-cb:checked');
-            let url = `/api/inquiries?search=${search}`;
-            checkboxes.forEach(cb => url += `&status[]=${cb.value}`);
+            const inqId = document.getElementById('id-filter').value;
+            const status = document.getElementById('status-filter').value;
+            const type = document.getElementById('type-filter').value;
+
+            let url = `/api/inquiries?search=${search}&id=${inqId}&status=${status}&type=${type}`;
 
             const res = await fetch(url);
             const data = await res.json();
@@ -185,8 +207,17 @@
             `}).join('');
         }
 
+        function resetFilters() {
+            document.getElementById('search-input').value = '';
+            document.getElementById('id-filter').value = '';
+            document.getElementById('status-filter').value = '';
+            document.getElementById('type-filter').value = '';
+            refreshTable();
+        }
+
         document.getElementById('search-input').addEventListener('input', refreshTable);
-        document.querySelectorAll('.filter-cb').forEach(cb => cb.addEventListener('change', refreshTable));
+        document.getElementById('id-filter').addEventListener('input', refreshTable);
+        document.querySelectorAll('.filter-select').forEach(select => select.addEventListener('change', refreshTable));
 
         // Initial load
         window.onload = refreshTable;

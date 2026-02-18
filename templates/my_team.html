@@ -96,6 +96,82 @@
             color: rgba(255, 255, 255, 0.82);
             text-align: right;
         }
+
+        /* Message Actions */
+        .message-bubble {
+            position: relative;
+        }
+
+        .msg-actions {
+            position: absolute;
+            top: -24px;
+            right: 0;
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            background: rgba(255,255,255,0.9);
+            padding: 2px 6px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        .message-row.mine .msg-actions {
+            right: 0;
+            left: auto;
+        }
+
+        .message-row.other .msg-actions {
+            left: 0;
+            right: auto;
+        }
+
+        .message-bubble:hover .msg-actions {
+            opacity: 1;
+        }
+
+        .msg-action-btn {
+            background: none;
+            border: none;
+            padding: 2px 4px;
+            font-size: 0.8rem;
+            color: #64748b;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .msg-action-btn:hover {
+            color: var(--blue);
+            transform: scale(1.1);
+        }
+
+        .msg-action-btn.delete:hover {
+            color: #ef4444;
+        }
+
+        .edit-container textarea {
+            width: 100%;
+            min-width: 200px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            font-size: 0.9rem;
+            margin-bottom: 6px;
+        }
+
+        .message-row.mine .edit-container textarea {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .message-row.mine .edit-container textarea::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
     </style>
     <!-- Injected Data for JS -->
     <script>
@@ -490,11 +566,20 @@
 
                     let shouldScroll = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
 
+                    // Support role checks for actions
+                    const isAdmin = window.currUserRole === 'ultra_admin' || window.currUserRole === 'super_admin';
+                    // We also have 'leader' role from Python context if we want, but simpler to check isAdmin || isOwner for now.
+                    // To accurately check 'leader', we'd need team_role in window context.
+                    const myTeamRole = "{{ user.team_role }}"; 
+
                     data.messages.forEach(msg => {
                         if (msg.id > lastMsgId) {
                             lastMsgId = msg.id;
-                            const isMine = msg.user_id == currentUserId;
+                            const isMine = msg.user_id == window.currUserId;
+                            const canManage = isMine || isAdmin || (myTeamRole === 'leader');
+
                             const row = document.createElement('div');
+                            row.id = `msg-row-${msg.id}`;
                             row.className = `message-row ${isMine ? 'mine' : 'other'}`;
 
                             // Avatar logic
@@ -503,11 +588,19 @@
                                 ? `<img src="${picUrl}" style="width:100%; height:100%; object-fit:cover;">` 
                                 : `<span>${msg.name[0].toUpperCase()}</span>`;
 
+                            const actionsHtml = canManage ? `
+                                <div class="msg-actions">
+                                    <button class="msg-action-btn edit" onclick="editMessage(${msg.id}, this)" title="Edit"><i class="bi bi-pencil"></i></button>
+                                    <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id})" title="Delete"><i class="bi bi-trash"></i></button>
+                                </div>
+                            ` : '';
+
                             row.innerHTML = `
                                 <div class="chat-avatar shadow-sm" title="${msg.name}">
                                     ${avatarHtml}
                                 </div>
                                 <div class="message-bubble">
+                                    ${actionsHtml}
                                     <div class="message-info">
                                         ${!isMine ? `<span class="fw-bold">${msg.name}</span> • ` : ''} 
                                         ${msg.created_at.split(' ')[1] || msg.created_at}
@@ -519,7 +612,7 @@
                         }
                     });
 
-                    if (shouldScroll || lastMsgId === data.messages.length) { // simplistic logic
+                    if (shouldScroll || lastMsgId === data.messages.length) { 
                         container.scrollTop = container.scrollHeight;
                     }
                 } else if (lastMsgId === 0) {
@@ -528,6 +621,91 @@
             } catch (err) {
                 console.error("Chat load error", err);
             }
+        }
+
+        function editMessage(msgId, btn) {
+            const row = btn.closest('.message-row');
+            const textDiv = row.querySelector('.message-text');
+            const bubble = row.querySelector('.message-bubble');
+            const currentText = textDiv.innerText;
+
+            const editContainer = document.createElement('div');
+            editContainer.className = 'edit-container';
+            editContainer.innerHTML = `
+                <textarea class="form-control" rows="2">${currentText}</textarea>
+                <div class="d-flex justify-content-end gap-2 mt-2">
+                    <button class="btn btn-sm btn-light" onclick="cancelEdit(${msgId})">Cancel</button>
+                    <button class="btn btn-sm btn-primary" onclick="saveMessageEdit(${msgId})">Save</button>
+                </div>
+            `;
+
+            textDiv.style.display = 'none';
+            bubble.querySelector('.msg-actions').style.display = 'none';
+            bubble.appendChild(editContainer);
+            editContainer.querySelector('textarea').focus();
+        }
+
+        async function saveMessageEdit(msgId) {
+            const row = document.getElementById(`msg-row-${msgId}`);
+            const textarea = row.querySelector('.edit-container textarea');
+            const newText = textarea.value.trim();
+
+            if (!newText) return;
+
+            try {
+                const res = await fetch(`/api/teams/message/${msgId}/edit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: newText })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    row.querySelector('.message-text').innerText = data.message;
+                    cancelEdit(msgId);
+                } else {
+                    alertUser(data.error || 'Failed to edit message', 'error');
+                }
+            } catch (err) {
+                alertUser('Error updating message', 'error');
+            }
+        }
+
+        function cancelEdit(msgId) {
+            const row = document.getElementById(`msg-row-${msgId}`);
+            const textDiv = row.querySelector('.message-text');
+            const bubble = row.querySelector('.message-bubble');
+            const editContainer = row.querySelector('.edit-container');
+
+            if (editContainer) editContainer.remove();
+            textDiv.style.display = 'block';
+            const actions = bubble.querySelector('.msg-actions');
+            if (actions) actions.style.display = 'flex';
+        }
+
+        async function deleteMessage(msgId) {
+            askConfirmation(
+                "Delete Message?",
+                "Are you sure you want to delete this message? This cannot be undone.",
+                "🗑️",
+                async () => {
+                    try {
+                        const res = await fetch(`/api/teams/message/${msgId}/delete`, { method: 'POST' });
+                        const data = await res.json();
+                        if (data.success) {
+                            const row = document.getElementById(`msg-row-${msgId}`);
+                            row.style.opacity = '0.5';
+                            row.querySelector('.message-text').innerHTML = '<i>Message deleted</i>';
+                            const actions = row.querySelector('.msg-actions');
+                            if (actions) actions.remove();
+                        } else {
+                            alertUser(data.error || 'Failed to delete message', 'error');
+                        }
+                    } catch (err) {
+                        alertUser('Error deleting message', 'error');
+                    }
+                },
+                'btn-danger'
+            );
         }
 
         async function sendMessage(e) {
