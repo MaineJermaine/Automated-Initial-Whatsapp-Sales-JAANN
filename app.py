@@ -951,19 +951,47 @@ def admin_delete_account(user_id):
         if user_to_delete.role in ['super_admin', 'admin', 'ultra_admin']:
              return jsonify({'error': 'Admins cannot delete Super Admins, Ultra Admins or other Admins'}), 403
 
-    db.session.delete(user_to_delete)
-    db.session.commit()
-    
-    # Notification logic
-    notify_roles = ['super_admin'] if current_user.role in ['super_admin', 'ultra_admin'] else ['super_admin', 'admin']
-    create_notification(
-        'account', 
-        'Account Deleted', 
-        f"{current_user.name} ({current_user.role}) deleted the account of {user_to_delete.username}.", 
-        target_roles=notify_roles
-    )
-    
-    return jsonify({'success': True})
+    # Clean up related data to avoid IntegrityErrors
+    try:
+        # 1. Promotion Requests (where user is target OR requester)
+        PromotionRequest.query.filter(or_(PromotionRequest.target_user_id == user_id, PromotionRequest.requester_id == user_id)).delete(synchronize_session=False)
+        
+        # 2. Team Requests (where user is target OR requester)
+        TeamRequest.query.filter(or_(TeamRequest.user_id == user_id, TeamRequest.requester_id == user_id)).delete(synchronize_session=False)
+        
+        # 3. Notifications
+        Notification.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        
+        # 4. Team Messages
+        TeamMessage.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        
+        # 5. Chat Sessions - Unassign instead of delete
+        ChatSession.query.filter_by(assigned_agent_id=user_id).update({ChatSession.assigned_agent_id: None}, synchronize_session=False)
+        ChatSession.query.filter_by(requested_agent_id=user_id).update({ChatSession.requested_agent_id: None}, synchronize_session=False)
+
+        # Capture username before deletion for the notification
+        deleted_username = user_to_delete.username
+
+        # Finally delete the user
+        db.session.delete(user_to_delete)
+        db.session.commit()
+        
+        # Notification logic
+        notify_roles = ['super_admin'] if current_user.role in ['super_admin', 'ultra_admin'] else ['super_admin', 'admin']
+        create_notification(
+            'account', 
+            'Account Deleted', 
+            f"{current_user.name} ({current_user.role}) deleted the account of {deleted_username}.", 
+            target_roles=notify_roles
+        )
+        return jsonify({'success': True})
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"ERROR deleting account {user_id}: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': f"Database error: {str(e)}"}), 500
 
 @app.route('/api/admin/user/<int:user_id>')
 def api_admin_get_user(user_id):
