@@ -3,10 +3,11 @@ services:
     name: web-app-assignment
     runtime: python
     plan: free
+    region: singapore
     buildCommand: "python -m pip install poetry && python -m poetry install"
     startCommand: "python -m poetry run gunicorn app:app"
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
       - key: DATABASE_URL
-        fromDatabase:
-          name: your-db-name-here
-          property: connectionString
+        value: sqlite:///database.db  # Changed from /data/ to local
