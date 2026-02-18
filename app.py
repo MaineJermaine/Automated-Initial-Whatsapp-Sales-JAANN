@@ -1502,6 +1502,12 @@ def customer_profile(id):
 @app.route('/api/customer/<int:id>')
 def api_get_customer(id):
     customer = Customer.query.get_or_404(id)
+    # Match logic from customer_details.html
+    active_sess = next((s for s in customer.chat_sessions if s.status == 'agent_active'), None)
+    assigned_name = "no agent has been assigned"
+    if active_sess and active_sess.assigned_agent:
+        assigned_name = active_sess.assigned_agent.name
+
     return jsonify({
         'id': customer.id,
         'name': customer.name,
@@ -1510,7 +1516,7 @@ def api_get_customer(id):
         'location': customer.location,
         'notes': customer.notes,
         'tags': customer.tags,
-        'assigned_staff': customer.assigned_staff or "Jayden Ng",
+        'assigned_staff': assigned_name,
         'created_at': customer.created_at,
         'updated_at': customer.updated_at
     })
@@ -1757,6 +1763,13 @@ def api_visitor_profile(session_id):
     customer_data = None
     if chat_session.linked_customer_id:
         c = chat_session.linked_customer
+        
+        # Match logic from customer_details.html
+        active_sess = next((s for s in c.chat_sessions if s.status == 'agent_active'), None)
+        assigned_name = "no agent has been assigned"
+        if active_sess and active_sess.assigned_agent:
+            assigned_name = active_sess.assigned_agent.name
+
         customer_data = {
             'id': c.id,
             'name': c.name,
@@ -1765,7 +1778,7 @@ def api_visitor_profile(session_id):
             'location': c.location,
             'notes': c.notes,
             'tags': c.tags,
-            'assigned_staff': c.assigned_staff or "Jayden Ng"
+            'assigned_staff': assigned_name
         }
 
     return jsonify({
