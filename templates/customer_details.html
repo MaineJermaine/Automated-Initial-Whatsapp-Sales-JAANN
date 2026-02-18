@@ -153,11 +153,13 @@
                             <h4 class="mb-1">{{ c.name }}</h4>
 
                             <span class="badge bg-light text-dark">
-                                Assigned: {{ c.assigned_staff or "Jayden Ng" }}
+                                {% set active_session = c.chat_sessions | selectattr('status', 'equalto', 'agent_active') | first %}
+                                Assigned: {% if active_session and active_session.assigned_agent %}{{ active_session.assigned_agent.name }}{% else %}no agent has been assigned{% endif %}
                             </span>
 
-                            <span class="ms-2 small text-success">
-                                <span class="status-dot"></span> Active lead
+                            <span class="ms-2 small {% if total_lead_score > 0 %}text-success{% else %}text-secondary{% endif %}">
+                                <span class="status-dot" style="background: {% if total_lead_score > 0 %}#4caf50{% else %}#6c757d{% endif %};"></span>
+                                {% if total_lead_score > 0 %}Active lead{% else %}No lead{% endif %}
                             </span>
                         </div>
                     </div>

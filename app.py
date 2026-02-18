@@ -1463,7 +1463,13 @@ def customer_profile(id):
     }
     
     users = User.query.all()
-    return render_template('customer_details.html', c=customer,tags_inventory=get_tags_inventory(), tag_colors=tag_colors, users=users)
+    
+    # Calculate total lead score across all linked chat sessions
+    total_lead_score = 0
+    for s in customer.chat_sessions:
+        total_lead_score += calculate_session_score(s)
+        
+    return render_template('customer_details.html', c=customer, tags_inventory=get_tags_inventory(), tag_colors=tag_colors, users=users, total_lead_score=total_lead_score)
 
 @app.route('/api/customer/<int:id>')
 def api_get_customer(id):
