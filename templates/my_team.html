@@ -149,6 +149,18 @@
             transform: scale(1.1);
         }
 
+        /* Ensure confirmation and transfer modals are above profile modal */
+        #confirmationModal, #transferLeaderModal {
+            z-index: 2051 !important;
+        }
+        #confirmationModal + .modal-backdrop, #transferLeaderModal + .modal-backdrop {
+            z-index: 2050 !important;
+        }
+        /* Standard Bootstrap backdrop z-index is 1050, modals are 1055. 
+           We use 2050+ to definitely clear the profile modal (1055). */
+
+
+
         .msg-action-btn.delete:hover {
             color: #ef4444;
         }
@@ -540,6 +552,7 @@
         window.currUserId = {{ (session.get('user_id', 0) or 0) | tojson }};
         window.currUserRole = {{ session.get('user_role', 'agent') | tojson }};
         window.currUsername = {{ session.get('user_username', '') | tojson }};
+        window.currTeamRole = {{ user.team_role | tojson if user else 'member' | tojson }};
 
         const teamId = {{ (team.id if team else 0) | tojson }};
         const currentUserId = {{ (user.id if user else 0) | tojson }};
@@ -576,7 +589,12 @@
                         if (msg.id > lastMsgId) {
                             lastMsgId = msg.id;
                             const isMine = msg.user_id == window.currUserId;
-                            const canManage = isMine || isAdmin || (myTeamRole === 'leader');
+                            const isAnyAdmin = window.currUserRole === 'ultra_admin' || window.currUserRole === 'super_admin' || window.currUserRole === 'admin';
+                            
+                            // Hierarchy: Owners can edit. Leaders/Admins CANNOT edit others.
+                            const canEdit = isMine;
+                            // Hierarchy: Owners and ALL Admins can delete.
+                            const canDelete = isMine || isAnyAdmin;
 
                             const row = document.createElement('div');
                             row.id = `msg-row-${msg.id}`;
@@ -588,12 +606,15 @@
                                 ? `<img src="${picUrl}" style="width:100%; height:100%; object-fit:cover;">` 
                                 : `<span>${msg.name[0].toUpperCase()}</span>`;
 
-                            const actionsHtml = canManage ? `
-                                <div class="msg-actions">
-                                    <button class="msg-action-btn edit" onclick="editMessage(${msg.id}, this)" title="Edit"><i class="bi bi-pencil"></i></button>
-                                    <button class="msg-action-btn delete" onclick="deleteMessage(${msg.id})" title="Delete"><i class="bi bi-trash"></i></button>
-                                </div>
-                            ` : '';
+                            let actionsHtml = '';
+                            if (canEdit || canDelete) {
+                                actionsHtml = `
+                                    <div class="msg-actions">
+                                        ${canEdit ? `<button class="msg-action-btn edit" onclick="editMessage(${msg.id}, this)" title="Edit"><i class="bi bi-pencil"></i></button>` : ''}
+                                        ${canDelete ? `<button class="msg-action-btn delete" onclick="deleteMessage(${msg.id})" title="Delete"><i class="bi bi-trash"></i></button>` : ''}
+                                    </div>
+                                `;
+                            }
 
                             row.innerHTML = `
                                 <div class="chat-avatar shadow-sm" title="${msg.name}">
@@ -603,7 +624,7 @@
                                     ${actionsHtml}
                                     <div class="message-info">
                                         ${!isMine ? `<span class="fw-bold">${msg.name}</span> • ` : ''} 
-                                        ${msg.created_at.split(' ')[1] || msg.created_at}
+                                        ${formatChatMessageTime(msg.created_at)}
                                     </div>
                                     <div class="message-text">${msg.message}</div>
                                 </div>
@@ -751,6 +772,18 @@
         }
 
         async function leaveTeam() {
+            const myRole = "{{ user.team_role }}";
+            const mySystemRole = "{{ session.get('user_role') }}";
+            const isUltraSuper = (mySystemRole === 'ultra_admin' || mySystemRole === 'super_admin');
+
+            // Absolute Rule: Leaders must transfer leadership first
+            // Note: Ultra/Super admins might bypass this if they are deleting the team, 
+            // but for "Leaving" as a member, the rule applies to the role integrity.
+            if (myRole === 'leader') {
+                alertUser("Leadership Integrity: You are the team leader. You must transfer your leadership to another member before leaving the team.", "error");
+                return;
+            }
+
             askConfirmation(
                 "Leave Team?",
                 "Are you sure you want to leave this team? You will lose access to team chat and records.",
@@ -819,106 +852,7 @@
             }
         }
 
-        // Override the global showAgentProfile to add team-specific actions only on this page
-        const _originalShowAgentProfile = window.showAgentProfile;
-        window.showAgentProfile = async function(userId) {
-            // 1. Call original global function to show base modal
-            if (typeof _originalShowAgentProfile === 'function') {
-                await _originalShowAgentProfile(userId);
-            } else {
-                // Fetch and show manually if global not ready (fallback)
-                console.warn("Global showAgentProfile not found, falling back.");
-            }
-            
-            // 2. Add team-specific leadership actions
-            try {
-                const res = await fetch(`/api/admin/user/${userId}`);
-                if (!res.ok) return;
-                const viewedUser = await res.json();
-                
-                // Get the action container from the standardized modal
-                const actionContainer = document.getElementById('stdProfActionContainer');
-                if (!actionContainer) return;
-                
-                actionContainer.innerHTML = ''; // Clear previous actions
 
-                // Leadership Logic
-                const myRole = "{{ user.team_role }}"; // 'leader', 'vice_leader', 'member'
-                const mySystemRole = "{{ session.get('user_role') }}"; // 'ultra_admin', 'super_admin', etc.
-                const myId = {{ user.id }};
-                const currentTeamId = {{ team.id if team else 0 }};
-                
-                const isAdmin = (mySystemRole === 'ultra_admin' || mySystemRole === 'super_admin');
-                const isLeader = (myRole === 'leader' || isAdmin);
-
-                // Only leaders/admins can act on others in their team
-                if (isLeader && viewedUser.id !== myId && viewedUser.team_id == currentTeamId) {
-                    const btnGroup = document.createElement('div');
-                    btnGroup.className = 'd-flex flex-wrap justify-content-center gap-2 mt-3 p-3 bg-light rounded-4 border';
-                    btnGroup.style.borderStyle = 'dashed';
-
-                    // 1. Promote / Demote
-                    if (viewedUser.team_role === 'member') {
-                        const btnPromote = document.createElement('button');
-                        btnPromote.className = 'btn btn-sm btn-success px-3';
-                        btnPromote.innerHTML = '<i class="bi bi-arrow-up-circle me-1"></i> Promote to Vice';
-                        btnPromote.onclick = () => memberAction(viewedUser.username, 'promote_vice');
-                        btnGroup.appendChild(btnPromote);
-                    } else if (viewedUser.team_role === 'vice_leader') {
-                        const btnDemote = document.createElement('button');
-                        btnDemote.className = 'btn btn-sm btn-outline-warning text-dark px-3';
-                        btnDemote.innerHTML = '<i class="bi bi-arrow-down-circle me-1"></i> Demote to Member';
-                        btnDemote.onclick = () => memberAction(viewedUser.username, 'demote');
-                        btnGroup.appendChild(btnDemote);
-                    }
-
-                    // 2. Transfer Leadership
-                    const btnTransfer = document.createElement('button');
-                    btnTransfer.className = 'btn btn-sm btn-warning text-dark px-3';
-                    btnTransfer.innerHTML = '<i class="bi bi-arrow-left-right me-1"></i> Transfer Lead';
-                    btnTransfer.onclick = () => {
-                        if (viewedUser.team_role === 'leader' && isAdmin) {
-                            openTransferModal();
-                        } else {
-                            const leader = window.teamMembers.find(m => m.team_role === 'leader');
-                            const leaderName = leader ? leader.name : 'the current leader';
-                            
-                            const message = isAdmin 
-                                ? `Transfer ${leaderName}'s leadership to ${viewedUser.name}? ${leaderName} will become a Vice Leader.`
-                                : `Transfer leadership to ${viewedUser.name}? You will become a Vice Leader.`;
-                            
-                            askConfirmation(
-                                "Transfer Leadership?",
-                                message,
-                                "👑",
-                                () => memberAction(viewedUser.username, 'transfer_leader'),
-                                'btn-warning'
-                            );
-                        }
-                    };
-                    btnGroup.appendChild(btnTransfer);
-
-                    // 3. Kick Member
-                    const btnKick = document.createElement('button');
-                    btnKick.className = 'btn btn-sm btn-outline-danger px-3';
-                    btnKick.innerHTML = '<i class="bi bi-person-x me-1"></i> Kick';
-                    btnKick.onclick = () => {
-                        askConfirmation(
-                            "Kick Member?",
-                            `Are you sure you want to kick ${viewedUser.name} from the team?`,
-                            "👢",
-                            () => kickMember(viewedUser.username),
-                            'btn-danger'
-                        );
-                    };
-                    btnGroup.appendChild(btnKick);
-
-                    actionContainer.appendChild(btnGroup);
-                }
-            } catch (err) {
-                console.error('Error adding team actions:', err);
-            }
-        };
 
         // Redir for existing calls to showTeamMemberProfile if any (cleanup)
         async function showTeamMemberProfile(userId) {
@@ -1099,6 +1033,95 @@
             const modal = new bootstrap.Modal(document.getElementById('confirmationModal'));
             modal.show();
         }
+
+        // --- TEAM MANAGEMENT OVERRIDE ---
+        (function() {
+            const _originalShowAgentProfile = window.showAgentProfile;
+            window.showAgentProfile = async function(userId) {
+                // 1. Call original function
+                if (typeof _originalShowAgentProfile === 'function') {
+                    await _originalShowAgentProfile(userId);
+                }
+
+                // 2. Inject Team Buttons
+                try {
+                    const res = await fetch(`/api/admin/user/${userId}`);
+                    if (!res.ok) return;
+                    const viewedUser = await res.json();
+                    
+                    const actionContainer = document.getElementById('stdProfActionContainer');
+                    if (!actionContainer) return;
+                    actionContainer.innerHTML = ''; 
+
+                    const myRole = window.currTeamRole; 
+                    const mySystemRole = window.currUserRole; 
+                    const myId = window.currUserId;
+                    const currentTeamId = {{ team.id if team else 0 }};
+                    
+                    const isUltraSuper = (mySystemRole === 'ultra_admin' || mySystemRole === 'super_admin');
+                    const isAnyAdmin = (isUltraSuper || mySystemRole === 'admin');
+                    const isLeader = (myRole === 'leader' || isUltraSuper);
+                    const isVice = (myRole === 'vice_leader');
+
+                    const canPromoteDemote = (isLeader || mySystemRole === 'admin');
+                    const canKick = (isLeader || isAnyAdmin || (isVice && viewedUser.team_role === 'member'));
+                    const canTransfer = (isLeader); 
+
+                    if ((canPromoteDemote || canKick || canTransfer) && viewedUser.id !== myId && viewedUser.team_id == currentTeamId) {
+                        const btnGroup = document.createElement('div');
+                        btnGroup.className = 'd-flex flex-wrap justify-content-center gap-2 mt-3 p-3 bg-light rounded-4 border';
+                        btnGroup.style.borderStyle = 'dashed';
+
+                        if (canPromoteDemote) {
+                            if (viewedUser.team_role === 'member') {
+                                const btnPromote = document.createElement('button');
+                                btnPromote.className = 'btn btn-sm btn-success px-3';
+                                btnPromote.innerHTML = '<i class="bi bi-arrow-up-circle me-1"></i> Promote' + (isAnyAdmin ? '' : ' to Vice');
+                                btnPromote.onclick = () => memberAction(viewedUser.username, 'promote_vice');
+                                btnGroup.appendChild(btnPromote);
+                            } else if (viewedUser.team_role === 'vice_leader') {
+                                const btnDemote = document.createElement('button');
+                                btnDemote.className = 'btn btn-sm btn-outline-warning text-dark px-3';
+                                btnDemote.innerHTML = '<i class="bi bi-arrow-down-circle me-1"></i> Demote to Member';
+                                btnDemote.onclick = () => memberAction(viewedUser.username, 'demote');
+                                btnGroup.appendChild(btnDemote);
+                            }
+                        }
+
+                        if (canTransfer) {
+                            const btnTransfer = document.createElement('button');
+                            btnTransfer.className = 'btn btn-sm btn-warning text-dark px-3';
+                            btnTransfer.innerHTML = '<i class="bi bi-arrow-left-right me-1"></i> Transfer Lead';
+                            btnTransfer.onclick = () => {
+                                if (viewedUser.team_role === 'leader' && isUltraSuper) {
+                                    openTransferModal();
+                                } else {
+                                    const leader = window.teamMembers.find(m => m.team_role === 'leader');
+                                    const leaderName = leader ? leader.name : 'the current leader';
+                                    const message = isUltraSuper 
+                                        ? `Transfer ${leaderName}'s leadership to ${viewedUser.name}? ${leaderName} will become a Vice Leader.`
+                                        : `Transfer leadership to ${viewedUser.name}? You will become a Vice Leader.`;
+                                    
+                                    askConfirmation("Transfer Leadership?", message, "👑", () => memberAction(viewedUser.username, 'transfer_leader'), 'btn-warning');
+                                }
+                            };
+                            btnGroup.appendChild(btnTransfer);
+                        }
+
+                        if (canKick) {
+                            const btnKick = document.createElement('button');
+                            btnKick.className = 'btn btn-sm btn-outline-danger px-3';
+                            btnKick.innerHTML = '<i class="bi bi-person-x me-1"></i> Kick';
+                            btnKick.onclick = () => {
+                                askConfirmation("Kick Member?", `Are you sure you want to kick ${viewedUser.name} from the team?`, "👢", () => kickMember(viewedUser.username), 'btn-danger');
+                            };
+                            btnGroup.appendChild(btnKick);
+                        }
+                        actionContainer.appendChild(btnGroup);
+                    }
+                } catch (e) { console.error("Override error:", e); }
+            };
+        })();
     </script>
 </body>
 

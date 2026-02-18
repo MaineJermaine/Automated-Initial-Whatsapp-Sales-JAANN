@@ -1640,7 +1640,7 @@
                     ${actionBtns}
                     <div class="msg-sender"><small class="fw-bold opacity-75">${msg.sender_name}</small></div>
                     <div class="msg-content">${textHtml}</div>
-                    <div class="bubble-time">${msg.timestamp || ''}</div>
+                    <div class="bubble-time">${formatChatMessageTime(msg.timestamp || '')}</div>
                 </div>
             `;
             return row;

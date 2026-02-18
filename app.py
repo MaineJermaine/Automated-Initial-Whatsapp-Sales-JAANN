@@ -1603,7 +1603,7 @@ def api_create_customer():
             sender_type='system',
             sender_name='System',
             text=f'Customer record created for {new_cust.name} in CRM.',
-            timestamp=datetime.now().strftime('%I:%M %p')
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         )
         db.session.add(sys_msg)
         db.session.commit()
@@ -1954,7 +1954,7 @@ def api_chat_handle_transfer(session_id):
             sender_type='system',
             sender_name='System',
             text=f'🔄 Agent {old_agent_name} transferred this chat over to Agent {new_agent.name if new_agent else "another agent"}.',
-            timestamp=datetime.now().strftime('%I:%M %p')
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         )
         db.session.add(sys_msg)
         db.session.commit()
@@ -2262,7 +2262,7 @@ def send_message(id):
             sender_type='agent',
             sender_name='Admin',
             text=data.get('text'),
-            timestamp=datetime.now().strftime('%I:%M %p')
+            timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         )
         db.session.add(new_msg)
         session.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M')
@@ -3046,16 +3046,10 @@ def leave_team():
     # If the user is the ONLY leader, they might need to assign another one or team must have at least one leader.
     # The prompt says: "A team MUST have atleast one leader."
     if current_user.team_role == 'leader':
-        other_leader = User.query.filter(User.team_id == current_user.team_id, User.id != current_user.id, User.team_role == 'leader').first()
-        if not other_leader:
-             # Check if there's a vice-leader who can take over
-             vice = User.query.filter_by(team_id=current_user.team_id, team_role='vice_leader').first()
-             if vice:
-                 vice.team_role = 'leader'
-             else:
-                 others = User.query.filter(User.team_id == current_user.team_id, User.id != current_user.id).all()
-                 if others:
-                     return jsonify({'error': 'You are the only leader of this team. Please promote someone else or transfer leadership before leaving.'}), 400
+        # Absolute Rule: Leaders must manually transfer leadership if there are other members
+        others_count = User.query.filter(User.team_id == current_user.team_id, User.id != current_user.id).count()
+        if others_count > 0:
+            return jsonify({'error': 'Leadership Integrity: You are the team leader. You must transfer your leadership to another member before leaving the team.'}), 400
 
     current_user.team_id = None
     current_user.team_role = None
@@ -3077,16 +3071,21 @@ def kick_member():
     if current_user.team_id != target_user.team_id:
         return jsonify({'error': 'User is not in your team.'}), 400
         
-    # Leaders and Admins can kick
-    is_leader = current_user.team_id == target_user.team_id and current_user.team_role == 'leader'
-    is_admin = current_user.role in ['ultra_admin', 'super_admin']
+    # Hierarchy: Leaders, Vice Leaders (for members), and all Admins can kick
+    is_leader = (current_user.team_id == target_user.team_id and current_user.team_role == 'leader')
+    is_vice = (current_user.team_id == target_user.team_id and current_user.team_role == 'vice_leader')
+    is_any_admin = current_user.role in ['ultra_admin', 'super_admin', 'admin']
     
-    if not is_leader and not is_admin:
-        return jsonify({'error': 'Only leaders or admins can kick members.'}), 403
+    # Vice leaders can only kick members
+    if is_vice and target_user.team_role != 'member':
+        return jsonify({'error': 'Vice leaders can only kick regular members.'}), 403
         
-    # Leaders can only kick agents
-    if is_leader and not is_admin and target_user.role != 'agent':
-        return jsonify({'error': 'Leaders can only kick agents.'}), 403
+    if not is_leader and not is_vice and not is_any_admin:
+        return jsonify({'error': 'Only leaders, vice leaders (for members), or admins can kick members.'}), 403
+        
+    # Leaders can only kick agents (non-admin accounts)
+    if is_leader and not is_any_admin and target_user.role != 'agent':
+        return jsonify({'error': 'Leaders can only kick regular agents.'}), 403
 
     target_user.team_id = None
     target_user.team_role = None
@@ -3221,9 +3220,18 @@ def team_member_action():
     if current_user.team_id != target_user.team_id and current_user.role not in ['ultra_admin', 'super_admin']:
         return jsonify({'error': 'User is not in your team.'}), 400
         
-    # Strictly enforce LEADER role if not an admin.
-    if current_user.team_role != 'leader' and current_user.role not in ['ultra_admin', 'super_admin']:
-        return jsonify({'error': 'Forbidden: Only leaders can perform this action.'}), 403
+    # Hierarchy Check
+    is_ultra_super = current_user.role in ['ultra_admin', 'super_admin']
+    is_any_admin = is_ultra_super or current_user.role == 'admin'
+    is_leader = (current_user.team_role == 'leader' or is_ultra_super)
+    
+    # Transfer Leadership is restricted to Leader/Ultra/Super only
+    if action == 'transfer_leader' and not is_leader:
+        return jsonify({'error': 'Forbidden: Only leaders or ultra/super admins can transfer leadership.'}), 403
+
+    # Promote/Demote allowed for Leader or Any Admin
+    if not is_leader and not is_any_admin:
+        return jsonify({'error': 'Forbidden: Only leaders or admins can perform this action.'}), 403
 
     if action == 'promote_vice':
         if target_user.team_role == 'leader':
@@ -3329,13 +3337,11 @@ def api_team_edit_message(message_id):
     msg = TeamMessage.query.get_or_404(message_id)
     user = User.query.get(user_id)
     
-    # Ownership or leadership/admin check
-    is_admin = user.role in ['ultra_admin', 'super_admin']
-    is_leader = user.team_role == 'leader' and user.team_id == msg.team_id
+    # Hierarchy: ONLY Owners can edit their own messages
     is_owner = msg.user_id == user_id
     
-    if not (is_admin or is_leader or is_owner):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not is_owner:
+        return jsonify({'error': 'Forbidden: You can only edit your own messages.'}), 403
         
     data = request.get_json()
     new_text = data.get('message')
@@ -3355,13 +3361,12 @@ def api_team_delete_message(message_id):
     msg = TeamMessage.query.get_or_404(message_id)
     user = User.query.get(user_id)
     
-    # Ownership or leadership/admin check
-    is_admin = user.role in ['ultra_admin', 'super_admin']
-    is_leader = user.team_role == 'leader' and user.team_id == msg.team_id
+    # Hierarchy: Owners and ALL Admins (Ultra, Super, Regular) can delete
+    is_any_admin = user.role in ['ultra_admin', 'super_admin', 'admin']
     is_owner = msg.user_id == user_id
     
-    if not (is_admin or is_leader or is_owner):
-        return jsonify({'error': 'Forbidden'}), 403
+    if not (is_any_admin or is_owner):
+        return jsonify({'error': 'Forbidden: Only owners and admins can delete messages.'}), 403
         
     db.session.delete(msg)
     db.session.commit()

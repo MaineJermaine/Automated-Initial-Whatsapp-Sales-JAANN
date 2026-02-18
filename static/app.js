@@ -657,11 +657,7 @@ async function markAllNotificationsRead() {
 function formatNotifTime(dateStr) {
     if (!dateStr) return '';
     try {
-        // dateStr is like "2026-02-16 14:05"
-        const parts = dateStr.split(' ');
-        const dateParts = parts[0].split('-');
-        const timeParts = parts[1].split(':');
-        const date = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1]);
+        const date = new Date(dateStr.replace(' ', 'T'));
         const now = new Date();
         const diffMs = now - date;
         const diffMins = Math.floor(diffMs / 60000);
@@ -673,7 +669,36 @@ function formatNotifTime(dateStr) {
         if (diffHours < 24) return `${diffHours}h ago`;
         if (diffDays === 1) return 'Yesterday';
         if (diffDays < 7) return `${diffDays}d ago`;
+        
+        // Spelled out date for older notifs
+        return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch (e) {
         return dateStr;
+    }
+}
+
+function formatChatMessageTime(dateStr) {
+    if (!dateStr) return '';
+    try {
+        // Handle "10:30 AM" legacy format
+        if (dateStr.includes('AM') || dateStr.includes('PM')) {
+            if (!dateStr.includes('-')) return dateStr; 
+        }
+
+        const date = new Date(dateStr.replace(' ', 'T'));
+        const now = new Date();
+        
+        const isToday = date.toDateString() === now.toDateString();
+        const isYesterday = new Date(now.setDate(now.getDate() - 1)).toDateString() === date.toDateString();
+        
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        if (isToday) return timeStr;
+        if (isYesterday) return `Yesterday, ${timeStr}`;
+        
+        // 14 Feb, 10:30 AM
+        const datePart = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        return `${datePart}, ${timeStr}`;
     } catch (e) {
         return dateStr;
     }
