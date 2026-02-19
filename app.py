@@ -1850,8 +1850,14 @@ def api_chat_sessions():
 def api_chat_messages(session_id):
     from flask import session as flask_session
     chat_session = ChatSession.query.get_or_404(session_id)
+    since_id = request.args.get('since', 0, type=int)
+    
+    msg_query = ChatMessage.query.filter_by(session_id=session_id)
+    if since_id > 0:
+        msg_query = msg_query.filter(ChatMessage.id > since_id)
+    
     messages = []
-    for m in chat_session.chat_messages:
+    for m in msg_query.all():
         pic = None
         if m.sender_type == 'agent':
             agent = User.query.filter_by(name=m.sender_name).first()

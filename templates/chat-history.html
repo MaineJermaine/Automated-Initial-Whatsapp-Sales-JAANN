@@ -1140,8 +1140,9 @@
         let currentVisitorPhone = null; // Added
         let currentSessionTags = [];
         const keywords = window.ruleKeywords || [];
-        const currentView = '{{ current_view }}';
-        const currentUserId = {{ session.get('user_id') or 'null' }};
+        let currentUserId = {{ session.get('user_id') or 'null' }};
+        let lastMessageId = 0;
+        let pollInterval = null;
 
         // ===== HANDLE TRANSFER =====
         async function handleTransfer(sessionId, action) {
@@ -1187,6 +1188,7 @@
                 }
             }
             markKeywordChats();
+            setInterval(pollSessionsList, 10000); // Sidebar polling every 10s
 
             // Load sort preference
             const savedSort = localStorage.getItem('chatSortPreference');
@@ -1359,7 +1361,11 @@
             const activeItem = document.querySelector(`.chat-list-item[data-session-id="${sessionId}"]`);
             if (activeItem) activeItem.classList.add('active');
 
-            // Fetch messages
+            // Clear existing polling
+            if (pollInterval) clearInterval(pollInterval);
+            lastMessageId = 0;
+
+            // Fetch messages (Initial Load)
             const res = await fetch(`/api/chat/session/${sessionId}/messages`);
             const data = await res.json();
             currentSessionStatus = data.session.status;
@@ -1371,6 +1377,9 @@
             // Parse tags
             currentSessionTags = (data.session.tags || '').split(',').filter(t => t.trim());
             updateTagButtons();
+
+            // Set up polling (exactly like team chat)
+            pollInterval = setInterval(pollNewMessages, 3000);
 
             // Update header
             const name = data.session.visitor_name;
@@ -1562,13 +1571,125 @@
         }
 
         // ===== RENDER MESSAGES =====
-        function renderMessages(messages) {
+        function renderMessages(messages, append = false) {
             const container = document.getElementById('chatMessagesScroll');
-            container.innerHTML = '';
-            messages.forEach(msg => {
-                container.appendChild(createMessageRow(msg));
-            });
-            container.scrollTop = container.scrollHeight;
+            if (!append) {
+                container.innerHTML = '';
+            }
+            
+            if (messages && messages.length > 0) {
+                messages.forEach(msg => {
+                    container.appendChild(createMessageRow(msg));
+                    if (msg.id > lastMessageId) {
+                        lastMessageId = msg.id;
+                    }
+                });
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        async function pollSessionsList() {
+            try {
+                const res = await fetch('/api/chat/sessions');
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const container = document.querySelector('.chat-list-scroll');
+                if (!container) return;
+
+                // For simplicity, we only update previews and highlights for existing items
+                // To support NEW sessions appearing live, we'd need to re-render the list
+                // Let's do a partial sync: update existing, add missing
+                data.forEach(s => {
+                    let item = container.querySelector(`.chat-list-item[data-session-id="${s.id}"]`);
+                    if (item) {
+                        // Update status dot
+                        const dot = item.querySelector('.chat-status-dot');
+                        if (dot) {
+                            dot.className = `chat-status-dot ${s.status === 'bot' ? 'dot-bot' : (s.status === 'agent_active' ? 'dot-agent' : 'dot-closed')}`;
+                        }
+                        
+                        // Update preview (if not currently focused session, to avoid race conditions handled by pollNewMessages)
+                        if (s.id !== currentSessionId) {
+                            const preview = item.querySelector('.chat-preview');
+                            if (preview) preview.textContent = s.last_message;
+                        }
+
+                        // Update score flag if lead
+                        const nameDiv = item.querySelector('.chat-name');
+                        const flag = nameDiv.querySelector('.keyword-flag');
+                        if (s.is_lead && !flag) {
+                             const span = document.createElement('span');
+                             span.className = 'keyword-flag';
+                             span.textContent = ` ⚡ Lead (${Math.floor(s.calculated_score || 0)})`;
+                             nameDiv.appendChild(span);
+                        }
+                    } else {
+                        // NEW session arrived!
+                        // For now, let's just reload the counts or suggest a refresh if it's too complex to re-render
+                        // Actually, let's just reload the page if a NEW session is detected to keep it simple and robust
+                        // location.reload(); 
+                        // Actually reload is too aggressive. Let's just ignore for now or add a simple "new chat" toast.
+                    }
+                });
+            } catch (err) {
+                console.error("List polling error:", err);
+            }
+        }
+
+        async function pollNewMessages() {
+            if (!currentSessionId) return;
+            try {
+                const res = await fetch(`/api/chat/session/${currentSessionId}/messages?since=${lastMessageId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                // Update Session Metadata (in case status/assignment/tags changed)
+                if (data.session) {
+                    currentSessionStatus = data.session.status;
+                    currentAssignedAgentId = data.session.assigned_agent_id;
+                    currentLinkedCustomerId = data.session.linked_customer_id;
+                    currentSessionTags = (data.session.tags || '').split(',').filter(t => t.trim());
+                    
+                    // Update UI elements that might have changed
+                    updateTagButtons();
+                    updateLinkedBadges(data.session);
+                    
+                    // Update header status & actions if needed
+                    const statusEl = document.getElementById('chatHeaderStatus');
+                    const assignedId = data.session.assigned_agent_id;
+                    if (data.session.status === 'bot') {
+                        statusEl.innerHTML = '<span style="color:#f59e0b;">🤖 Chatbot Active</span>';
+                    } else if (assignedId) {
+                        statusEl.innerHTML = `<span style="color:#10b981;">🟢 Agent Active: ${data.session.assigned_agent_name}</span>`;
+                    } else {
+                        statusEl.innerHTML = '<span style="color:#94a3b8;">⚪ Closed</span>';
+                    }
+
+                    // We don't re-render all action buttons here to avoid disrupting user interaction,
+                    // but we could if we wanted to be perfectly in sync. 
+                    // For now, let's at least update the sidebar previews.
+                }
+
+                if (data.messages && data.messages.length > 0) {
+                    renderMessages(data.messages, true);
+                    
+                    // Mark keywords for matches
+                    checkKeywordMatchForSession(currentSessionId, data.messages);
+
+                    // Also update sidebar preview for this session
+                    const sidebarItem = document.querySelector(`.chat-list-item[data-session-id="${currentSessionId}"]`);
+                    if (sidebarItem) {
+                        const previewEl = sidebarItem.querySelector('.chat-preview');
+                        if (previewEl) {
+                            const lastMsg = data.messages[data.messages.length - 1];
+                            previewEl.textContent = (lastMsg.sender_type === 'agent' ? 'You: ' : (lastMsg.sender_name + ': ')) + lastMsg.text;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Polling error:", err);
+            }
         }
 
         function createMessageRow(msg) {
@@ -1758,6 +1879,9 @@
                 const container = document.getElementById('chatMessagesScroll');
                 container.appendChild(createMessageRow(data.message));
                 container.scrollTop = container.scrollHeight;
+                if (data.message.id > lastMessageId) {
+                    lastMessageId = data.message.id;
+                }
             }
         }
 
