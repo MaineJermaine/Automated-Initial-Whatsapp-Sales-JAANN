@@ -1140,6 +1140,7 @@
         let currentVisitorPhone = null; // Added
         let currentSessionTags = [];
         const keywords = window.ruleKeywords || [];
+        const currentView = '{{ current_view }}';
         let currentUserId = {{ session.get('user_id') or 'null' }};
         let lastMessageId = 0;
         let pollInterval = null;
@@ -1603,6 +1604,13 @@
                 data.forEach(s => {
                     let item = container.querySelector(`.chat-list-item[data-session-id="${s.id}"]`);
                     if (item) {
+                        // Synchronize data attributes for context menu logic
+                        item.dataset.status = s.status;
+                        item.dataset.pinned = String(s.pinned).toLowerCase();
+                        item.dataset.archived = String(s.archived).toLowerCase();
+                        item.dataset.transferStatus = s.transfer_status || '';
+                        item.dataset.assignedAgentId = s.assigned_agent_id || '';
+
                         // Update status dot
                         const dot = item.querySelector('.chat-status-dot');
                         if (dot) {
